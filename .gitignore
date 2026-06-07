@@ -10,6 +10,10 @@ node_modules/
 src-tauri/target/
 src-tauri/gen/schemas/
 
+# pnpm
+.pnpm-store/
+.pnpm-debug.log*
+
 AGENTS.md
 CLAUDE.md
 .claude/

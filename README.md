@@ -1,6 +1,6 @@
 # z-monitor-switcher
 
-跨平台（macOS + Windows）外接显示器输入源切换工具。通过 DDC/CI 切换输入源，并提供亮度、音量调节、托盘/菜单栏快捷操作、全局快捷键，以及 KVM 式“切换后置动作”（睡眠/关机）。技术栈：Tauri v2（Rust 后端）+ React + Vite + shadcn/ui（bun）。
+跨平台（macOS + Windows）外接显示器输入源切换工具。通过 DDC/CI 切换输入源，并提供亮度、音量调节、托盘/菜单栏快捷操作、全局快捷键，以及 KVM 式“切换后置动作”（睡眠/关机）。技术栈：Tauri v2（Rust 后端）+ React + Vite + shadcn/ui（pnpm）。
 
 ---
 
@@ -102,13 +102,13 @@ macOS 控制走 **私有框架** `IOAVServiceCreate / IOAVServiceReadI2C / IOAVS
 ## 开发
 
 ```bash
-bun install
-bun run tauri dev      # 开发
-bun run tauri build    # 本地构建产物
+pnpm install
+pnpm run tauri dev      # 开发
+pnpm run tauri build    # 本地构建产物
 
 # 校验
-bun run typecheck
-bun run build
+pnpm run typecheck
+pnpm run build
 cd src-tauri && cargo clippy --all-targets -- -D warnings
 ```
 
