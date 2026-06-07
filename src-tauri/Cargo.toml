@@ -1,0 +1,61 @@
+[package]
+name = "z-monitor-switcher"
+version = "0.1.0"
+description = "Cross-platform monitor input source switcher"
+authors = ["Goalonez"]
+edition = "2021"
+rust-version = "1.77"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+# The `_lib` suffix avoids a name collision with the binary on Windows.
+name = "z_monitor_switcher_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+# `tray-icon` enables the system tray / menu-bar API; `image-png` lets us load
+# the bundled PNG icon (and the macOS template icon) at runtime.
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
+tauri-plugin-opener = "2"
+tauri-plugin-store = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+
+# Global hotkeys and launch-at-login are desktop-only plugins. Gating them to
+# `not(any(target_os = "android", target_os = "ios"))` keeps mobile builds clean
+# (the tray/hotkey/autostart features are not used on mobile).
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-autostart = "2"
+
+# --- Platform-gated DDC/CI backends ---
+# These crates only compile on their respective targets, so they are gated
+# here AND behind `#[cfg(...)]` in the source. On macOS, `cargo check` must
+# NOT pull the Windows crate (and vice versa).
+
+# macOS: haimgel fork published to crates.io as 0.2.x. This is the
+# Apple-Silicon-capable version using the private IOAVService APIs (arm path).
+# It only supports external USB-C / DisplayPort / Thunderbolt displays; built-in
+# panels, Apple displays, DisplayLink and built-in HDMI on Apple Silicon do not
+# speak DDC and are reported as unsupported by the enumeration code.
+[target.'cfg(target_os = "macos")'.dependencies]
+ddc-macos = "0.2.2"
+ddc = "0.2"
+core-graphics = "0.24"
+
+# Windows: wraps the dxva2.dll Monitor Configuration API. NOTE: this path cannot
+# be compiled/verified on macOS (expected); correctness here relies on cfg
+# gating and matches the documented dxva2 API. Verify on a Windows host.
+[target.'cfg(windows)'.dependencies]
+ddc-winapi = "0.2"
+ddc = "0.2"
+
+[features]
+# This feature is used for production builds or when a dev server is not
+# specified, DO NOT REMOVE!!
+custom-protocol = ["tauri/custom-protocol"]

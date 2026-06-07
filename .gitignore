@@ -1,0 +1,19 @@
+.DS_Store
+.idea/
+.vscode/
+
+# Node / frontend build artifacts
+node_modules/
+/dist
+
+# Rust / Tauri build artifacts
+src-tauri/target/
+src-tauri/gen/schemas/
+
+AGENTS.md
+CLAUDE.md
+.claude/
+.trellis/
+.history/
+.agents/
+.codex/
