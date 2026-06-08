@@ -1,6 +1,7 @@
 import { load, type Store } from "@tauri-apps/plugin-store";
 import type { InputSource, KvmConfig, MonitorInfo } from "@/lib/types";
 import { DEFAULT_PRESET_ID, clonePresetSources } from "@/lib/presets";
+import { normalizeAccelerator } from "@/lib/accelerators";
 
 /**
  * Per-monitor input-source configuration persisted via tauri-plugin-store.
@@ -62,7 +63,7 @@ function normalizeInputSource(source: StoredInputSource): InputSource {
     label: source.label,
     value: source.value,
     enabled: source.enabled ?? true,
-    accelerator: source.accelerator ?? "",
+    accelerator: normalizeAccelerator(source.accelerator ?? ""),
   };
 }
 
@@ -91,7 +92,10 @@ export async function saveConfig(
   config: MonitorInputConfig,
 ): Promise<void> {
   const store = await getStore();
-  await store.set(monitorKey(monitor), config);
+  await store.set(monitorKey(monitor), {
+    ...config,
+    sources: config.sources.map(normalizeInputSource),
+  });
   // autoSave persists, but flush explicitly so a crash right after a change
   // does not lose the user's saved mapping.
   await store.save();
@@ -99,9 +103,13 @@ export async function saveConfig(
 
 // --- KVM post-action (PR5) --------------------------------------------------
 
-/** Store key for the KVM post-action configuration. */
+/** Legacy global store key for the KVM post-action configuration. */
 const KVM_KEY = "__kvm";
 export const KVM_CONFIG_CHANGED_EVENT = "kvm-config-changed";
+export interface KvmConfigChangedDetail {
+  key: string;
+  config: KvmConfig;
+}
 
 /**
  * Default KVM config: the legacy "switch to Type-C, then power off this
@@ -116,10 +124,9 @@ export const DEFAULT_KVM_CONFIG: KvmConfig = {
   action: "shutdown",
 };
 
-/** Load persisted KVM config, falling back to the (disabled) default. */
-export async function loadKvmConfig(): Promise<KvmConfig> {
-  const store = await getStore();
-  const stored = await store.get<KvmConfig>(KVM_KEY);
+function normalizeKvmConfig(
+  stored: Partial<KvmConfig> | null | undefined,
+): KvmConfig {
   return {
     ...DEFAULT_KVM_CONFIG,
     ...stored,
@@ -127,15 +134,32 @@ export async function loadKvmConfig(): Promise<KvmConfig> {
   };
 }
 
+export function kvmKey(monitor?: MonitorInfo): string {
+  return monitor ? `${KVM_KEY}::${monitorKey(monitor)}` : KVM_KEY;
+}
+
+/** Load persisted KVM config, falling back to legacy global config/default. */
+export async function loadKvmConfig(monitor?: MonitorInfo): Promise<KvmConfig> {
+  const store = await getStore();
+  const stored = await store.get<KvmConfig>(kvmKey(monitor));
+  if (stored || !monitor) return normalizeKvmConfig(stored);
+  const legacy = await store.get<KvmConfig>(KVM_KEY);
+  return normalizeKvmConfig(legacy);
+}
+
 /** Persist KVM config. */
-export async function saveKvmConfig(config: KvmConfig): Promise<void> {
+export async function saveKvmConfig(
+  config: KvmConfig,
+  monitor?: MonitorInfo,
+): Promise<void> {
   const store = await getStore();
   const normalized = { ...config, action: "shutdown" as const };
-  await store.set(KVM_KEY, normalized);
+  const key = kvmKey(monitor);
+  await store.set(key, normalized);
   await store.save();
   window.dispatchEvent(
-    new CustomEvent<KvmConfig>(KVM_CONFIG_CHANGED_EVENT, {
-      detail: normalized,
+    new CustomEvent<KvmConfigChangedDetail>(KVM_CONFIG_CHANGED_EVENT, {
+      detail: { key, config: normalized },
     }),
   );
 }

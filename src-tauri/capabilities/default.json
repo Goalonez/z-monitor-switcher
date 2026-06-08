@@ -1,13 +1,16 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Default capability set for the main window",
-  "windows": ["main"],
+  "description": "Default capability set for app windows",
+  "windows": ["main", "tray-controls"],
   "permissions": [
     "core:default",
+    "core:webview:allow-create-webview-window",
+    "core:window:allow-create",
     "core:window:allow-show",
     "core:window:allow-hide",
     "core:window:allow-set-focus",
+    "core:window:allow-set-position",
     "core:window:allow-unminimize",
     "core:app:allow-app-hide",
     "core:app:allow-default-window-icon",

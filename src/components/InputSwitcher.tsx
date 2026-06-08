@@ -2,8 +2,12 @@ import { useEffect, useState } from "react";
 import type { MonitorInfo } from "@/lib/types";
 import { useMonitorInput } from "@/hooks/useMonitorInput";
 import { DEFAULT_PRESET_ID } from "@/lib/presets";
-import { acceleratorFromEvent } from "@/lib/accelerators";
+import {
+  acceleratorFromEvent,
+  displayAccelerator,
+} from "@/lib/accelerators";
 import { Button } from "@/components/ui/button";
+import { useI18n } from "@/lib/i18n";
 import {
   Check,
   Keyboard,
@@ -12,10 +16,13 @@ import {
   Plus,
   RotateCcw,
   Trash2,
+  X,
 } from "lucide-react";
 
 interface InputSwitcherProps {
   monitor: MonitorInfo;
+  manageOpen?: boolean;
+  onManageOpenChange?: (open: boolean) => void;
   /** Called with the input value after a successful switch (KVM trigger). */
   onSwitched?: (value: number) => void;
 }
@@ -25,7 +32,12 @@ interface InputSwitcherProps {
  * preset selector, and an editable mapping table. Reflects the full state
  * closure (switching / error / active) and never relies on reading 0x60 back.
  */
-export function InputSwitcher({ monitor, onSwitched }: InputSwitcherProps) {
+export function InputSwitcher({
+  monitor,
+  manageOpen = false,
+  onManageOpenChange,
+  onSwitched,
+}: InputSwitcherProps) {
   const {
     config,
     activeValue,
@@ -39,7 +51,7 @@ export function InputSwitcher({ monitor, onSwitched }: InputSwitcherProps) {
     removeSource,
     resetSources,
   } = useMonitorInput(monitor, onSwitched);
-  const [editing, setEditing] = useState(false);
+  const { t } = useI18n();
   const [recordingIndex, setRecordingIndex] = useState<number | null>(null);
   const enabledSources = config.sources.filter((source) => source.enabled);
 
@@ -68,141 +80,188 @@ export function InputSwitcher({ monitor, onSwitched }: InputSwitcherProps) {
     return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, [recordingIndex, updateSource]);
 
+  useEffect(() => {
+    if (!manageOpen) setRecordingIndex(null);
+  }, [manageOpen]);
+
   return (
     <div className="space-y-3 border-t pt-3">
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="grid grid-cols-2 gap-2">
         {enabledSources.map((source, index) => (
           <Button
             key={`${source.label}-${index}`}
             variant={activeValue === source.value ? "default" : "outline"}
             size="sm"
+            className="min-w-0"
             disabled={status === "switching"}
             onClick={() => switchTo(source.value)}
           >
             {status === "switching" && activeValue === source.value && (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
             )}
-            {source.label}
+            <span className="truncate">{source.label}</span>
           </Button>
         ))}
         {enabledSources.length === 0 && (
-          <span className="text-sm text-muted-foreground">
-            没有启用的输入源
+          <span className="col-span-2 text-sm text-muted-foreground">
+            {t("noEnabledSources")}
           </span>
         )}
       </div>
 
       {status === "error" && error && (
-        <p className="text-sm text-destructive">切换失败：{error}</p>
+        <p className="text-sm text-destructive">
+          {t("switchFailed")}
+          {error}
+        </p>
       )}
 
-      <div className="flex items-center gap-2">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => setEditing((v) => !v)}
+      {manageOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label={t("manageInputs")}
+          onClick={() => onManageOpenChange?.(false)}
         >
-          {editing ? (
-            <Check className="h-3.5 w-3.5" />
-          ) : (
-            <Pencil className="h-3.5 w-3.5" />
-          )}
-          {editing ? "完成" : "管理输入源"}
-        </Button>
-      </div>
+          <div
+            className="flex max-h-[86vh] w-full max-w-xl flex-col rounded-lg border bg-background shadow-lg"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b px-4 py-3">
+              <div className="flex items-center gap-2">
+                <Pencil className="h-4 w-4 text-muted-foreground" />
+                <h2 className="text-base font-semibold">{t("manageInputs")}</h2>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => onManageOpenChange?.(false)}
+                aria-label={t("close")}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
 
-      {editing && (
-        <div className="space-y-2">
-          <div className="flex items-center justify-between rounded-md border p-2">
-            <span className="text-sm">LG 标准</span>
-            <input
-              type="checkbox"
-              className="h-4 w-4"
-              checked={config.presetId === "lg-alt"}
-              onChange={(e) =>
-                applyPreset(e.target.checked ? "lg-alt" : DEFAULT_PRESET_ID)
-              }
-            />
-          </div>
-          {config.sources.map((source, index) => (
-            <div
-              key={index}
-              className="grid gap-2 rounded-md border p-2 sm:grid-cols-[auto_1fr_5rem_minmax(8rem,auto)_auto] sm:items-center"
-            >
+            <div className="flex items-center justify-between border-b px-4 py-3">
+              <span className="text-sm font-medium">{t("lgStandard")}</span>
               <input
                 type="checkbox"
                 className="h-4 w-4"
-                checked={source.enabled}
-                aria-label={`${source.label || "输入源"} 是否生效`}
+                checked={config.presetId === "lg-alt"}
                 onChange={(e) =>
-                  updateSource(index, { enabled: e.target.checked })
+                  applyPreset(e.target.checked ? "lg-alt" : DEFAULT_PRESET_ID)
                 }
               />
-              <input
-                className="h-8 rounded-md border bg-transparent px-2 text-sm"
-                value={source.label}
-                placeholder="名称"
-                onChange={(e) => updateSource(index, { label: e.target.value })}
-              />
-              <input
-                className="h-8 rounded-md border bg-transparent px-2 text-sm"
-                type="number"
-                min={0}
-                max={255}
-                value={source.value}
-                placeholder="控制值"
-                onChange={(e) => {
-                  const parsed = Number(e.target.value);
-                  if (Number.isFinite(parsed)) {
-                    updateSource(index, { value: parsed });
-                  }
-                }}
-              />
-              <Button
-                variant={recordingIndex === index ? "secondary" : "outline"}
-                size="sm"
-                onClick={() =>
-                  setRecordingIndex((current) =>
-                    current === index ? null : index,
-                  )
-                }
-                title="设置这个输入源的快捷键"
-              >
-                <Keyboard className="h-3.5 w-3.5" />
-                {recordingIndex === index
-                  ? "按组合键"
-                  : source.accelerator || "快捷键"}
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => removeSource(index)}
-                disabled={config.sources.length <= 1}
-                title="删除这个输入源"
-                aria-label={`删除 ${source.label || "输入源"}`}
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </Button>
             </div>
-          ))}
-          <div className="flex flex-wrap gap-2">
-            <Button variant="outline" size="sm" onClick={addSource}>
-              <Plus className="h-3.5 w-3.5" />
-              新增输入源
-            </Button>
-            <Button variant="ghost" size="sm" onClick={resetSources}>
-              <RotateCcw className="h-3.5 w-3.5" />
-              恢复当前预设
-            </Button>
+
+            <div className="space-y-2 overflow-y-auto p-4">
+              {config.sources.map((source, index) => (
+                <div
+                  key={index}
+                  className="grid grid-cols-[auto_minmax(5.5rem,7rem)_4rem_minmax(5.5rem,1fr)_auto_auto] items-center gap-2 rounded-md border p-2"
+                >
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4"
+                    checked={source.enabled}
+                    aria-label={`${source.label || t("inputName")} ${t("inputEnabled")}`}
+                    onChange={(e) =>
+                      updateSource(index, { enabled: e.target.checked })
+                    }
+                  />
+                  <input
+                    className="h-8 min-w-0 rounded-md border bg-transparent px-2 text-sm"
+                    value={source.label}
+                    placeholder={t("inputName")}
+                    onChange={(e) =>
+                      updateSource(index, { label: e.target.value })
+                    }
+                  />
+                  <input
+                    className="h-8 min-w-0 rounded-md border bg-transparent px-2 text-sm"
+                    type="number"
+                    min={0}
+                    max={255}
+                    value={source.value}
+                    placeholder={t("controlValue")}
+                    onChange={(e) => {
+                      const parsed = Number(e.target.value);
+                      if (Number.isFinite(parsed)) {
+                        updateSource(index, { value: parsed });
+                      }
+                    }}
+                  />
+                  <Button
+                    variant={recordingIndex === index ? "secondary" : "outline"}
+                    size="sm"
+                    className="min-w-0 px-2"
+                    onClick={() =>
+                      setRecordingIndex((current) =>
+                        current === index ? null : index,
+                      )
+                    }
+                    title={t("setShortcut")}
+                  >
+                    <Keyboard className="h-3.5 w-3.5" />
+                    <span className="min-w-0 truncate">
+                      {recordingIndex === index
+                        ? t("pressShortcut")
+                        : displayAccelerator(source.accelerator) || t("shortcut")}
+                    </span>
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => updateSource(index, { accelerator: "" })}
+                    disabled={!source.accelerator}
+                    title={t("clearShortcut")}
+                    aria-label={`${t("clearShortcut")} ${source.label || t("inputName")}`}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => removeSource(index)}
+                    disabled={config.sources.length <= 1}
+                    title={t("deleteInput")}
+                    aria-label={`${t("deleteInput")} ${source.label || t("inputName")}`}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+
+            <div className="space-y-2 border-t px-4 py-3">
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" size="sm" onClick={addSource}>
+                  <Plus className="h-3.5 w-3.5" />
+                  {t("addInput")}
+                </Button>
+                <Button variant="ghost" size="sm" onClick={resetSources}>
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  {t("resetPreset")}
+                </Button>
+                <Button
+                  variant="default"
+                  size="sm"
+                  className="ml-auto"
+                  onClick={() => onManageOpenChange?.(false)}
+                >
+                  <Check className="h-3.5 w-3.5" />
+                  {t("done")}
+                </Button>
+              </div>
+              {configError && (
+                <p className="text-sm text-destructive">
+                  {t("shortcutFailed")}
+                  {configError}
+                </p>
+              )}
+            </div>
           </div>
-          <p className="text-xs text-muted-foreground">
-            只显示已生效的输入源。录制快捷键时按 Escape 取消，按 Delete 清空。
-          </p>
-          {configError && (
-            <p className="text-sm text-destructive">
-              快捷键未生效：{configError}
-            </p>
-          )}
         </div>
       )}
     </div>

@@ -9,7 +9,7 @@ import { setupTray } from "@/lib/tray";
 
 type Status = "loading" | "ready" | "error";
 
-interface UseSettingsResult {
+export interface UseSettingsResult {
   status: Status;
   error: string | null;
   autostart: boolean;
@@ -36,10 +36,10 @@ export function useSettings(): UseSettingsResult {
       try {
         const autostartOn = await ensureAutostartDefault();
         await setupTray();
-        const hotkeyError = await applyConfiguredHotkeys();
+        await applyConfiguredHotkeys().catch(() => null);
         if (cancelled) return;
         setAutostartState(autostartOn);
-        setError(hotkeyError);
+        setError(null);
         setStatus("ready");
       } catch (err: unknown) {
         if (cancelled) return;

@@ -5,10 +5,16 @@ import { MenuItem } from "@tauri-apps/api/menu/menuItem";
 import { Submenu } from "@tauri-apps/api/menu/submenu";
 import { PredefinedMenuItem } from "@tauri-apps/api/menu/predefinedMenuItem";
 import { defaultWindowIcon } from "@tauri-apps/api/app";
-import { Window } from "@tauri-apps/api/window";
+import { LogicalPosition, Window } from "@tauri-apps/api/window";
+import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
+import type { TrayIconEvent } from "@tauri-apps/api/tray";
 import type { MonitorInfo } from "@/lib/types";
 import { listMonitors, setInput } from "@/lib/api";
 import { loadConfig, loadKvmConfig, saveKvmConfig } from "@/lib/store";
+import { formatMonitorName } from "@/lib/monitor";
+import { translate } from "@/lib/i18n";
+
+type TraySubmenuItem = MenuItem | CheckMenuItem | PredefinedMenuItem;
 
 /**
  * System-tray / menu-bar integration (PR3, R6).
@@ -21,12 +27,13 @@ import { loadConfig, loadKvmConfig, saveKvmConfig } from "@/lib/store";
  *
  * Menu structure:
  *   - one submenu per DDC-capable monitor → enabled input sources only
- *   - 切换后关机 (toggle)
+ *   - each monitor submenu also owns its own 切换后关机 toggle
  *   - 显示窗口 (show + focus main window)
  *   - 退出 (quit the app)
  */
 
 const TRAY_ID = "main-tray";
+const TRAY_CONTROLS_WINDOW_LABEL = "tray-controls";
 let setupPromise: Promise<void> | null = null;
 let trayInitialized = false;
 
@@ -39,8 +46,50 @@ async function showMainWindow(): Promise<void> {
   await win.setFocus();
 }
 
+/** Show the compact brightness / volume panel opened from the menu bar. */
+async function showTrayControls(event?: TrayIconEvent): Promise<void> {
+  const existing = await WebviewWindow.getByLabel(TRAY_CONTROLS_WINDOW_LABEL);
+  const x = event ? Math.max(8, event.rect.position.x - 160) : undefined;
+  const y = event
+    ? event.rect.position.y + event.rect.size.height + 4
+    : undefined;
+
+  if (existing) {
+    if (typeof x === "number" && typeof y === "number") {
+      await existing.setPosition(new LogicalPosition(x, y)).catch(() => {});
+    }
+    await existing.show();
+    await existing.setFocus();
+    return;
+  }
+
+  const controls = new WebviewWindow(TRAY_CONTROLS_WINDOW_LABEL, {
+    url: "/",
+    title: "z-monitor-switcher",
+    width: 320,
+    height: 220,
+    minWidth: 320,
+    minHeight: 220,
+    resizable: false,
+    decorations: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    visibleOnAllWorkspaces: true,
+    focus: true,
+    center: !event,
+    x,
+    y,
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    void controls.once("tauri://created", () => resolve());
+    void controls.once("tauri://error", (err) => reject(err.payload));
+  }).catch(() => null);
+}
+
 /** Build the tray menu from the current monitors and their persisted configs. */
 async function buildMenu(): Promise<Menu> {
+  const t = translate;
   let monitors: MonitorInfo[] = [];
   try {
     monitors = await listMonitors();
@@ -52,9 +101,12 @@ async function buildMenu(): Promise<Menu> {
 
   const monitorSubmenus = await Promise.all(
     supported.map(async (monitor) => {
-      const config = await loadConfig(monitor);
+      const [config, kvmConfig] = await Promise.all([
+        loadConfig(monitor),
+        loadKvmConfig(monitor),
+      ]);
       const sources = config.sources.filter((source) => source.enabled);
-      const items = await Promise.all(
+      const items: TraySubmenuItem[] = await Promise.all(
         sources.map((source) =>
           MenuItem.new({
             id: `mon:${monitor.id}:${source.value}:${source.label}`,
@@ -69,53 +121,64 @@ async function buildMenu(): Promise<Menu> {
       if (items.length === 0) {
         items.push(
           await MenuItem.new({
-            text: "没有启用的输入源",
+            text: t("noSourcesInTray"),
             enabled: false,
           }),
         );
       }
+      items.push(
+        await PredefinedMenuItem.new({ item: "Separator" }),
+        await CheckMenuItem.new({
+          id: `kvm:${monitor.id}`,
+          text: t("shutdownAfterSwitch"),
+          checked: kvmConfig.enabled,
+          action: () => {
+            void saveKvmConfig(
+              {
+                ...kvmConfig,
+                enabled: !kvmConfig.enabled,
+                action: "shutdown",
+              },
+              monitor,
+            ).then(refreshTrayMenu);
+          },
+        }),
+      );
       return Submenu.new({
-        text: monitor.name,
-        enabled: sources.length > 0,
+        text: formatMonitorName(monitor),
+        enabled: true,
         items,
       });
     }),
   );
 
-  const kvmConfig = await loadKvmConfig();
-  const shutdownItem = await CheckMenuItem.new({
-    id: "kvm-shutdown",
-    text: "切换后关机",
-    checked: kvmConfig.enabled,
+  const controlsItem = await MenuItem.new({
+    id: "controls",
+    text: t("controls"),
     action: () => {
-      void saveKvmConfig({
-        ...kvmConfig,
-        enabled: !kvmConfig.enabled,
-        action: "shutdown",
-      }).then(refreshTrayMenu);
+      void showTrayControls().catch(() => {});
     },
   });
 
   const showItem = await MenuItem.new({
     id: "show",
-    text: "显示窗口",
+    text: t("showWindow"),
     action: () => {
       void showMainWindow();
     },
   });
-  const quitItem = await PredefinedMenuItem.new({ text: "退出", item: "Quit" });
+  const quitItem = await PredefinedMenuItem.new({ text: t("quit"), item: "Quit" });
   const sep1 = await PredefinedMenuItem.new({ item: "Separator" });
   const sep2 = await PredefinedMenuItem.new({ item: "Separator" });
-  const sep3 = await PredefinedMenuItem.new({ item: "Separator" });
 
   return Menu.new({
     items: [
-      ...monitorSubmenus,
+      controlsItem,
       sep1,
-      shutdownItem,
+      ...monitorSubmenus,
       sep2,
       showItem,
-      sep3,
+      await PredefinedMenuItem.new({ item: "Separator" }),
       quitItem,
     ],
   });
@@ -147,9 +210,19 @@ export async function setupTray(): Promise<void> {
       // menu-bar light/dark appearance. This option is macOS-only and ignored on
       // Windows / Linux, so it is safe to always set.
       iconAsTemplate: true,
-      tooltip: "显示器切换器",
+      tooltip: "z-monitor-switcher",
       menu,
-      showMenuOnLeftClick: true,
+      showMenuOnLeftClick: false,
+      action: (event) => {
+        if (
+          (event.type === "Click" &&
+            event.button === "Left" &&
+            event.buttonState === "Up") ||
+          (event.type === "DoubleClick" && event.button === "Left")
+        ) {
+          void showTrayControls(event).catch(() => {});
+        }
+      },
     });
   })().finally(() => {
     setupPromise = null;

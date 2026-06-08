@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { PostAction } from "@/lib/types";
 import { Button } from "@/components/ui/button";
+import { useI18n } from "@/lib/i18n";
 import { AlertTriangle, Loader2 } from "lucide-react";
 
 interface PostActionDialogProps {
@@ -33,6 +34,7 @@ export function PostActionDialog({
   onConfirm,
   onCancel,
 }: PostActionDialogProps) {
+  const { t } = useI18n();
   const [remaining, setRemaining] = useState(countdownSeconds);
 
   // Reset the countdown whenever a new action is shown.
@@ -58,19 +60,27 @@ export function PostActionDialog({
       <div className="w-full max-w-sm space-y-4 rounded-lg border bg-background p-5 shadow-lg">
         <div className="flex items-center gap-2 text-destructive">
           <AlertTriangle className="h-5 w-5" />
-          <h2 className="text-base font-semibold">即将关机本机</h2>
+          <h2 className="text-base font-semibold">
+            {t("shutdownDialogTitle")}
+          </h2>
         </div>
 
         <p className="text-sm text-muted-foreground">
-          输入源已切换。本机将在 <span className="font-semibold text-foreground">{remaining}</span> 秒后关机。
-          请先保存工作，此操作不可撤销。
+          {t("shutdownDialogBefore")}{" "}
+          <span className="font-semibold text-foreground">{remaining}</span>{" "}
+          {t("shutdownDialogAfter")}
         </p>
 
-        {error && <p className="text-sm text-destructive">关机失败：{error}</p>}
+        {error && (
+          <p className="text-sm text-destructive">
+            {t("shutdownFailed")}
+            {error}
+          </p>
+        )}
 
         <div className="flex justify-end gap-2">
           <Button variant="outline" size="sm" onClick={onCancel} disabled={running}>
-            取消
+            {t("cancel")}
           </Button>
           <Button
             variant="default"
@@ -79,7 +89,7 @@ export function PostActionDialog({
             disabled={running}
           >
             {running && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-            立即关机
+            {t("shutdownNow")}
           </Button>
         </div>
       </div>

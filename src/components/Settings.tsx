@@ -1,104 +1,94 @@
-import { useSettings } from "@/hooks/useSettings";
-import type { useKvm } from "@/hooks/useKvm";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2 } from "lucide-react";
+import type { UseSettingsResult } from "@/hooks/useSettings";
+import { useI18n, type Language } from "@/lib/i18n";
+import { Button } from "@/components/ui/button";
+import { Loader2, X } from "lucide-react";
 
 interface SettingsProps {
-  /** KVM post-action state/handlers, owned by App (so the dialog lives there). */
-  kvm: ReturnType<typeof useKvm>;
+  open: boolean;
+  settings: UseSettingsResult;
+  onOpenChange: (open: boolean) => void;
 }
 
-/**
- * Settings surface for app-level options. Per-input shortcuts live inside input
- * source management, where the target input is obvious to the user.
- */
-export function Settings({ kvm }: SettingsProps) {
-  const { status, error, autostart, toggleAutostart } = useSettings();
+export function Settings({ open, settings, onOpenChange }: SettingsProps) {
+  const { language, setLanguage, t } = useI18n();
+
+  if (!open) return null;
+
+  const languageOptions: Array<{ value: Language; label: string }> = [
+    { value: "zh", label: t("chinese") },
+    { value: "en", label: t("english") },
+  ];
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">设置</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4 text-sm">
-        {status === "loading" && (
-          <div className="flex items-center gap-2 text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            正在加载设置…
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center bg-black/45 p-4 pt-16"
+      role="dialog"
+      aria-modal="true"
+      aria-label={t("settings")}
+      onClick={() => onOpenChange(false)}
+    >
+      <div
+        className="w-full max-w-sm rounded-lg border bg-background shadow-lg"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-center justify-between border-b px-4 py-3">
+          <h2 className="text-base font-semibold">{t("settings")}</h2>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => onOpenChange(false)}
+            aria-label={t("close")}
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+
+        <div className="space-y-4 p-4 text-sm">
+          {settings.status === "loading" && (
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              {t("loadingSettings")}
+            </div>
+          )}
+
+          {settings.error && (
+            <p className="text-sm text-destructive">{settings.error}</p>
+          )}
+
+          <div className="flex items-center justify-between gap-3">
+            <label className="font-medium">{t("autostart")}</label>
+            <input
+              type="checkbox"
+              className="h-4 w-4"
+              checked={settings.autostart}
+              disabled={settings.status === "loading"}
+              onChange={(event) =>
+                settings.toggleAutostart(event.target.checked)
+              }
+            />
           </div>
-        )}
 
-        {error && <p className="text-sm text-destructive">{error}</p>}
-
-        {status !== "loading" && (
-          <>
-            <section>
-              <div className="flex items-center justify-between gap-3">
-                <label className="font-medium">开机自启</label>
-                <input
-                  type="checkbox"
-                  className="h-4 w-4"
-                  checked={autostart}
-                  onChange={(e) => toggleAutostart(e.target.checked)}
-                />
-              </div>
-            </section>
-
-            <section className="space-y-2 border-t pt-4">
-              <div className="flex items-center justify-between">
-                <label className="font-medium">切换后关机</label>
-                <input
-                  type="checkbox"
-                  className="h-4 w-4"
-                  checked={kvm.config.enabled}
-                  onChange={(e) =>
-                    kvm.updateConfig({
-                      enabled: e.target.checked,
-                      action: "shutdown",
-                    })
-                  }
-                />
-              </div>
-
-              {kvm.config.enabled && (
-                <div className="space-y-2 rounded-md border p-3">
-                  <div className="flex items-center gap-2">
-                    <label className="w-24 text-xs text-muted-foreground">
-                      目标输入源
-                    </label>
-                    <input
-                      className="h-8 flex-1 rounded-md border bg-transparent px-2"
-                      value={kvm.config.triggerLabel}
-                      placeholder="如 Type-C"
-                      onChange={(e) =>
-                        kvm.updateConfig({ triggerLabel: e.target.value })
-                      }
-                    />
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <label className="w-24 text-xs text-muted-foreground">
-                      控制值
-                    </label>
-                    <input
-                      className="h-8 w-24 rounded-md border bg-transparent px-2"
-                      type="number"
-                      min={0}
-                      max={255}
-                      value={kvm.config.triggerValue}
-                      onChange={(e) => {
-                        const parsed = Number(e.target.value);
-                        if (Number.isFinite(parsed)) {
-                          kvm.updateConfig({ triggerValue: parsed });
-                        }
-                      }}
-                    />
-                  </div>
-                </div>
-              )}
-            </section>
-          </>
-        )}
-      </CardContent>
-    </Card>
+          <div className="flex items-center justify-between gap-3">
+            <label className="font-medium">{t("language")}</label>
+            <div className="inline-flex rounded-md border p-0.5">
+              {languageOptions.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  className={`h-7 rounded px-3 text-xs font-medium transition-colors ${
+                    language === option.value
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                  }`}
+                  onClick={() => setLanguage(option.value)}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }

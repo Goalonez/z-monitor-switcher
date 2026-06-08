@@ -3,9 +3,11 @@ import {
   unregisterAll,
   isRegistered,
 } from "@tauri-apps/plugin-global-shortcut";
+import type { ShortcutEvent } from "@tauri-apps/plugin-global-shortcut";
 import type { MonitorInfo } from "@/lib/types";
 import { listMonitors, setInput } from "@/lib/api";
 import { loadConfig } from "@/lib/store";
+import { displayAccelerator, normalizeAccelerator } from "@/lib/accelerators";
 
 interface HotkeyBinding {
   accelerator: string;
@@ -34,35 +36,48 @@ export async function applyHotkeys(bindings: HotkeyBinding[]): Promise<void> {
   // De-duplicate accelerators (the plugin rejects a double register); last wins.
   const byAccelerator = new Map<string, HotkeyBinding>();
   for (const b of bindings) {
-    if (b.accelerator.trim()) byAccelerator.set(b.accelerator, b);
+    const accelerator = normalizeAccelerator(b.accelerator);
+    if (accelerator) byAccelerator.set(accelerator, { ...b, accelerator });
   }
   const unique = [...byAccelerator.values()];
   if (unique.length === 0) return;
 
-  await register(
-    unique.map((b) => b.accelerator),
-    (event) => {
-      // The shared handler fires for every accelerator; only act on press
-      // (not release) and look up the matching binding by shortcut string.
-      if (event.state !== "Pressed") return;
-      const binding = byAccelerator.get(event.shortcut);
-      if (binding) {
-        void setInput(binding.monitorId, binding.value).catch(() => {
-          // Best-effort: no window-bound UI on the hotkey path to surface this.
-        });
-      }
-    },
-  );
+  const failures: string[] = [];
+  const handler = (event: ShortcutEvent) => {
+    // The shared handler fires for every accelerator; only act on press
+    // (not release) and look up the matching binding by shortcut string.
+    if (event.state !== "Pressed") return;
+    const binding = byAccelerator.get(normalizeAccelerator(event.shortcut));
+    if (binding) {
+      void setInput(binding.monitorId, binding.value).catch(() => {
+        // Best-effort: no window-bound UI on the hotkey path to surface this.
+      });
+    }
+  };
+
+  for (const binding of unique) {
+    try {
+      await register(binding.accelerator, handler);
+    } catch {
+      failures.push(
+        `${displayAccelerator(binding.accelerator)}（${binding.monitorName} / ${binding.sourceLabel}）`,
+      );
+    }
+  }
+
+  if (failures.length > 0) {
+    throw new Error(`这些快捷键未生效：${failures.join("、")}`);
+  }
 }
 
 function validateBindings(bindings: HotkeyBinding[]): string | null {
   const byAccelerator = new Map<string, HotkeyBinding>();
   for (const binding of bindings) {
-    const normalized = binding.accelerator.trim().toLowerCase();
+    const normalized = normalizeAccelerator(binding.accelerator).toLowerCase();
     if (!normalized) continue;
     const existing = byAccelerator.get(normalized);
     if (existing) {
-      return `快捷键 ${binding.accelerator} 同时分配给了「${existing.monitorName} / ${existing.sourceLabel}」和「${binding.monitorName} / ${binding.sourceLabel}」。`;
+      return `快捷键 ${displayAccelerator(binding.accelerator)} 同时分配给了「${existing.monitorName} / ${existing.sourceLabel}」和「${binding.monitorName} / ${binding.sourceLabel}」。`;
     }
     byAccelerator.set(normalized, binding);
   }
@@ -79,7 +94,7 @@ export async function configuredHotkeysForMonitors(
       return config.sources
         .filter((source) => source.enabled && source.accelerator.trim())
         .map((source) => ({
-          accelerator: source.accelerator.trim(),
+          accelerator: normalizeAccelerator(source.accelerator),
           monitorId: monitor.id,
           monitorName: monitor.name,
           sourceLabel: source.label,

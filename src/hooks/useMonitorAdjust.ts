@@ -15,7 +15,7 @@ interface UseMonitorAdjustResult {
   status: ProbeStatus;
   /** Probe error message, if any (non-fatal: brightness slider can still try). */
   error: string | null;
-  /** Whether to render the volume slider (R5: only when probed-supported). */
+  /** Whether to render the volume slider. DDC displays may allow write even when reads fail. */
   volumeSupported: boolean;
   /** Optimistic brightness value (0..brightnessMax), or null until known. */
   brightness: number | null;
@@ -36,8 +36,10 @@ interface UseMonitorAdjustResult {
  * read, and writes settled values over DDC with debounce + optimistic UI.
  *
  * DDC reads are unreliable, so a failed probe is non-fatal — brightness still
- * shows (R4) seeded with a default, volume is hidden unless probed-supported
- * (R5). DDC writes are slow, so slider drags are debounced and never block UI.
+ * shows (R4) seeded with a default. For volume, some displays reject reads but
+ * still accept writes, so DDC-capable monitors keep a tryable slider even when
+ * the current speaker level could not be read. DDC writes are slow, so slider
+ * drags are debounced and never block UI.
  */
 export function useMonitorAdjust(monitor: MonitorInfo): UseMonitorAdjustResult {
   const [status, setStatus] = useState<ProbeStatus>("probing");
@@ -55,16 +57,17 @@ export function useMonitorAdjust(monitor: MonitorInfo): UseMonitorAdjustResult {
       .then((c) => {
         if (cancelled) return;
         setCaps(c);
-        // Seed sliders with best-effort current values. Do not invent a default
-        // volume: the user specifically needs the external display's current
-        // speaker level, and a fake value would be misleading.
+        // Seed sliders with best-effort current values. Do not invent a shown
+        // default volume: when the read fails, the slider can still try writing
+        // but the value text stays "—" until the user moves it.
         setBrightnessState(c.brightness.current ?? 50);
-        setVolumeState(c.volume.supported ? c.volume.current : null);
+        setVolumeState(c.volume.current);
         setStatus("ready");
       })
       .catch((err: unknown) => {
         if (cancelled) return;
-        // Non-fatal: keep brightness usable with defaults; hide volume.
+        // Non-fatal: keep brightness usable with defaults; keep volume tryable
+        // for DDC displays because some monitors accept writes but reject reads.
         setBrightnessState(50);
         setVolumeState(null);
         setError(err instanceof Error ? err.message : String(err));
@@ -104,7 +107,7 @@ export function useMonitorAdjust(monitor: MonitorInfo): UseMonitorAdjustResult {
   return {
     status,
     error,
-    volumeSupported: caps?.volume.supported ?? false,
+    volumeSupported: monitor.ddcSupported && status !== "probing",
     brightness,
     volume,
     brightnessMax: caps?.brightness.maximum ?? DEFAULT_MAX,

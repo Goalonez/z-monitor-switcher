@@ -104,14 +104,19 @@ fn find_monitor(monitor_id: &str) -> Result<(Vec<Monitor>, usize), MonitorError>
 /// best-effort initial values. A failed read is reported as unsupported rather
 /// than an error (e.g. a monitor without speakers won't answer 0x62).
 fn probe_feature(monitor: &mut Monitor, code: u8) -> FeatureCapability {
-    match monitor.get_vcp_feature(code) {
-        Ok(v) => FeatureCapability {
-            supported: true,
-            current: Some(v.value()),
-            maximum: Some(v.maximum()),
-        },
-        Err(_) => FeatureCapability::unsupported(),
+    for attempt in 0..write_retry::ATTEMPTS {
+        if let Ok(v) = monitor.get_vcp_feature(code) {
+            return FeatureCapability {
+                supported: true,
+                current: Some(v.value()),
+                maximum: Some(v.maximum()),
+            };
+        }
+        if attempt + 1 < write_retry::ATTEMPTS {
+            std::thread::sleep(write_retry::DELAY);
+        }
     }
+    FeatureCapability::unsupported()
 }
 
 /// Write a VCP feature, repeating the write per [`write_retry`]. dxva2's
