@@ -23,9 +23,9 @@ function App() {
   return (
     <main className="mx-auto max-w-2xl space-y-6 p-6">
       <header>
-        <h1 className="text-2xl font-bold tracking-tight">Monitor Switcher</h1>
+        <h1 className="text-2xl font-bold tracking-tight">显示器切换器</h1>
         <p className="text-sm text-muted-foreground">
-          跨平台显示器输入源切换工具
+          切换外接显示器输入源，并调节亮度和音量
         </p>
       </header>
       <MonitorList state={monitorsState} onSwitched={kvm.maybeTrigger} />

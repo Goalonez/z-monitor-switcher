@@ -33,6 +33,10 @@ export interface InputSource {
   label: string;
   /** Raw VCP 0x60 value written to the monitor (0-255 in practice). */
   value: number;
+  /** Whether this source is shown in quick-switch UI and the tray menu. */
+  enabled: boolean;
+  /** Optional global shortcut that switches this monitor to this source. */
+  accelerator: string;
 }
 
 /** A named set of input-source presets the user can apply as a starting point. */
@@ -68,12 +72,10 @@ export interface MonitorCapabilities {
 }
 
 /**
- * KVM post-switch action executed on THIS machine after an input switch (R11).
- * Mirrors the Rust `PostAction` enum (serde lowercase). `"none"` is the default
- * (no side effect); `"sleep"` / `"shutdown"` are irreversible and require an
- * explicit, cancelable user confirmation before they run.
+ * KVM post-switch action executed on THIS machine after an input switch.
+ * The UI only exposes shutdown; `"none"` is used to hide the confirmation.
  */
-export type PostAction = "none" | "sleep" | "shutdown";
+export type PostAction = "none" | "shutdown";
 
 /**
  * Persisted KVM configuration. When `enabled`, after switching a monitor to
@@ -90,12 +92,4 @@ export interface KvmConfig {
   triggerLabel: string;
   /** Action to run on this machine after the trigger switch. */
   action: PostAction;
-}
-export interface HotkeyBinding {
-  /** Accelerator string understood by tauri-plugin-global-shortcut. */
-  accelerator: string;
-  /** Human-facing label for the target input, shown in settings. */
-  label: string;
-  /** Raw VCP 0x60 value applied to all monitors when the hotkey fires. */
-  value: number;
 }

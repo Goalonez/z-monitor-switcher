@@ -1,31 +1,26 @@
 import { useCallback, useEffect, useState } from "react";
-import type { HotkeyBinding } from "@/lib/types";
-import { loadHotkeys, saveHotkeys } from "@/lib/store";
-import { applyHotkeys } from "@/lib/hotkeys";
 import {
   autostartEnabled,
   ensureAutostartDefault,
   setAutostart,
 } from "@/lib/autostart";
-import { setupTray, refreshTrayMenu } from "@/lib/tray";
+import { applyConfiguredHotkeys } from "@/lib/hotkeys";
+import { setupTray } from "@/lib/tray";
 
 type Status = "loading" | "ready" | "error";
 
 interface UseSettingsResult {
   status: Status;
   error: string | null;
-  hotkeys: HotkeyBinding[];
   autostart: boolean;
-  /** Edit one hotkey binding (accelerator/label/value), re-register and persist. */
-  updateHotkey: (index: number, patch: Partial<HotkeyBinding>) => void;
   /** Toggle launch-at-login. */
   toggleAutostart: (value: boolean) => void;
 }
 
 /**
- * Owns the PR3 settings surface and the app-level side effects:
- *   - creates the tray on mount (and rebuilds its menu),
- *   - loads + registers global hotkeys from the persisted bindings,
+ * Owns app-level settings side effects:
+ *   - creates the tray on mount,
+ *   - registers global hotkeys from enabled input sources,
  *   - defaults autostart ON on first run, then reflects the OS state.
  *
  * Exposes a full loading / error / ready closure for the settings UI.
@@ -33,22 +28,18 @@ interface UseSettingsResult {
 export function useSettings(): UseSettingsResult {
   const [status, setStatus] = useState<Status>("loading");
   const [error, setError] = useState<string | null>(null);
-  const [hotkeys, setHotkeys] = useState<HotkeyBinding[]>([]);
   const [autostart, setAutostartState] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const [bindings, autostartOn] = await Promise.all([
-          loadHotkeys(),
-          ensureAutostartDefault(),
-          setupTray(),
-        ]);
-        await applyHotkeys(bindings);
+        const autostartOn = await ensureAutostartDefault();
+        await setupTray();
+        const hotkeyError = await applyConfiguredHotkeys();
         if (cancelled) return;
-        setHotkeys(bindings);
         setAutostartState(autostartOn);
+        setError(hotkeyError);
         setStatus("ready");
       } catch (err: unknown) {
         if (cancelled) return;
@@ -60,24 +51,6 @@ export function useSettings(): UseSettingsResult {
       cancelled = true;
     };
   }, []);
-
-  const updateHotkey = useCallback(
-    (index: number, patch: Partial<HotkeyBinding>) => {
-      setHotkeys((prev) => {
-        const next = prev.map((h, i) => (i === index ? { ...h, ...patch } : h));
-        void saveHotkeys(next);
-        // Re-register the whole set (idempotent) and rebuild the tray so the
-        // "apply to all" labels stay in sync. Surface registration failures.
-        applyHotkeys(next)
-          .then(() => refreshTrayMenu())
-          .catch((err: unknown) => {
-            setError(err instanceof Error ? err.message : String(err));
-          });
-        return next;
-      });
-    },
-    [],
-  );
 
   const toggleAutostart = useCallback((value: boolean) => {
     setAutostartState(value); // optimistic
@@ -94,9 +67,7 @@ export function useSettings(): UseSettingsResult {
   return {
     status,
     error,
-    hotkeys,
     autostart,
-    updateHotkey,
     toggleAutostart,
   };
 }

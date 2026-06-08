@@ -16,6 +16,7 @@ interface AdjustControlsProps {
 export function AdjustControls({ monitor }: AdjustControlsProps) {
   const {
     status,
+    error,
     volumeSupported,
     brightness,
     volume,
@@ -49,7 +50,7 @@ export function AdjustControls({ monitor }: AdjustControlsProps) {
         </span>
       </div>
 
-      {volumeSupported && (
+      {volumeSupported && volume !== null && (
         <div className="flex items-center gap-3">
           <Volume2 className="h-4 w-4 shrink-0 text-muted-foreground" />
           <Slider
@@ -61,6 +62,20 @@ export function AdjustControls({ monitor }: AdjustControlsProps) {
           <span className="w-10 shrink-0 text-right text-sm tabular-nums text-muted-foreground">
             {volume ?? "—"}
           </span>
+        </div>
+      )}
+
+      {volumeSupported && volume === null && (
+        <div className="flex items-center gap-3 text-sm text-muted-foreground">
+          <Volume2 className="h-4 w-4 shrink-0" />
+          未读取到当前音量，暂不显示音量滑块。
+        </div>
+      )}
+
+      {!volumeSupported && (
+        <div className="flex items-center gap-3 text-sm text-muted-foreground">
+          <Volume2 className="h-4 w-4 shrink-0" />
+          {error ? "音量控制暂不可用" : "这台显示器未报告音量控制"}
         </div>
       )}
     </div>

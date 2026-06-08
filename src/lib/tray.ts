@@ -1,14 +1,14 @@
 import { TrayIcon } from "@tauri-apps/api/tray";
 import { Menu } from "@tauri-apps/api/menu";
+import { CheckMenuItem } from "@tauri-apps/api/menu/checkMenuItem";
 import { MenuItem } from "@tauri-apps/api/menu/menuItem";
 import { Submenu } from "@tauri-apps/api/menu/submenu";
 import { PredefinedMenuItem } from "@tauri-apps/api/menu/predefinedMenuItem";
 import { defaultWindowIcon } from "@tauri-apps/api/app";
 import { Window } from "@tauri-apps/api/window";
 import type { MonitorInfo } from "@/lib/types";
-import { listMonitors, setInput, applyInputToAll } from "@/lib/api";
-import { loadConfig } from "@/lib/store";
-import { INPUT_PRESETS } from "@/lib/presets";
+import { listMonitors, setInput } from "@/lib/api";
+import { loadConfig, loadKvmConfig, saveKvmConfig } from "@/lib/store";
 
 /**
  * System-tray / menu-bar integration (PR3, R6).
@@ -20,13 +20,15 @@ import { INPUT_PRESETS } from "@/lib/presets";
  * which keeps running when the window is hidden ("close = minimize to tray").
  *
  * Menu structure:
- *   - one submenu per DDC-capable monitor → its configured input sources
- *   - "应用到全部显示器" submenu → common inputs applied to every monitor
+ *   - one submenu per DDC-capable monitor → enabled input sources only
+ *   - 切换后关机 (toggle)
  *   - 显示窗口 (show + focus main window)
  *   - 退出 (quit the app)
  */
 
 const TRAY_ID = "main-tray";
+let setupPromise: Promise<void> | null = null;
+let trayInitialized = false;
 
 /** Show and focus the main window (also un-minimizes if needed). */
 async function showMainWindow(): Promise<void> {
@@ -48,42 +50,50 @@ async function buildMenu(): Promise<Menu> {
   }
   const supported = monitors.filter((m) => m.ddcSupported);
 
-  // Per-monitor submenus, each listing that display's configured inputs.
   const monitorSubmenus = await Promise.all(
     supported.map(async (monitor) => {
       const config = await loadConfig(monitor);
+      const sources = config.sources.filter((source) => source.enabled);
       const items = await Promise.all(
-        config.sources.map((source) =>
+        sources.map((source) =>
           MenuItem.new({
-            id: `mon:${monitor.id}:${source.value}`,
+            id: `mon:${monitor.id}:${source.value}:${source.label}`,
             text: source.label,
+            accelerator: source.accelerator || undefined,
             action: () => {
               void setInput(monitor.id, source.value).catch(() => {});
             },
           }),
         ),
       );
-      return Submenu.new({ text: monitor.name, items });
+      if (items.length === 0) {
+        items.push(
+          await MenuItem.new({
+            text: "没有启用的输入源",
+            enabled: false,
+          }),
+        );
+      }
+      return Submenu.new({
+        text: monitor.name,
+        enabled: sources.length > 0,
+        items,
+      });
     }),
   );
 
-  // "Apply to all" submenu uses the default preset's common inputs.
-  const allInputs = INPUT_PRESETS[0].sources;
-  const applyAllItems = await Promise.all(
-    allInputs.map((source) =>
-      MenuItem.new({
-        id: `all:${source.value}`,
-        text: source.label,
-        action: () => {
-          void applyInputToAll(source.value).catch(() => {});
-        },
-      }),
-    ),
-  );
-  const applyAllSubmenu = await Submenu.new({
-    text: "应用到全部显示器",
-    enabled: supported.length > 0,
-    items: applyAllItems,
+  const kvmConfig = await loadKvmConfig();
+  const shutdownItem = await CheckMenuItem.new({
+    id: "kvm-shutdown",
+    text: "切换后关机",
+    checked: kvmConfig.enabled,
+    action: () => {
+      void saveKvmConfig({
+        ...kvmConfig,
+        enabled: !kvmConfig.enabled,
+        action: "shutdown",
+      }).then(refreshTrayMenu);
+    },
   });
 
   const showItem = await MenuItem.new({
@@ -96,14 +106,16 @@ async function buildMenu(): Promise<Menu> {
   const quitItem = await PredefinedMenuItem.new({ text: "退出", item: "Quit" });
   const sep1 = await PredefinedMenuItem.new({ item: "Separator" });
   const sep2 = await PredefinedMenuItem.new({ item: "Separator" });
+  const sep3 = await PredefinedMenuItem.new({ item: "Separator" });
 
   return Menu.new({
     items: [
       ...monitorSubmenus,
-      applyAllSubmenu,
       sep1,
-      showItem,
+      shutdownItem,
       sep2,
+      showItem,
+      sep3,
       quitItem,
     ],
   });
@@ -111,26 +123,39 @@ async function buildMenu(): Promise<Menu> {
 
 /** Create the tray icon (idempotent: reuses the existing one if present). */
 export async function setupTray(): Promise<void> {
-  const existing = await TrayIcon.getById(TRAY_ID);
-  const menu = await buildMenu();
+  if (setupPromise) return setupPromise;
 
-  if (existing) {
-    await existing.setMenu(menu);
-    return;
-  }
+  setupPromise = (async () => {
+    if (!trayInitialized) {
+      await TrayIcon.removeById(TRAY_ID).catch(() => {});
+      trayInitialized = true;
+    }
 
-  const icon = await defaultWindowIcon();
-  await TrayIcon.new({
-    id: TRAY_ID,
-    icon: icon ?? undefined,
-    // macOS: render the icon as a monochrome template so it adapts to the
-    // menu-bar light/dark appearance. This option is macOS-only and ignored on
-    // Windows / Linux, so it is safe to always set.
-    iconAsTemplate: true,
-    tooltip: "Monitor Switcher",
-    menu,
-    showMenuOnLeftClick: true,
+    const existing = await TrayIcon.getById(TRAY_ID);
+    const menu = await buildMenu();
+
+    if (existing) {
+      await existing.setMenu(menu);
+      return;
+    }
+
+    const icon = await defaultWindowIcon();
+    await TrayIcon.new({
+      id: TRAY_ID,
+      icon: icon ?? undefined,
+      // macOS: render the icon as a monochrome template so it adapts to the
+      // menu-bar light/dark appearance. This option is macOS-only and ignored on
+      // Windows / Linux, so it is safe to always set.
+      iconAsTemplate: true,
+      tooltip: "显示器切换器",
+      menu,
+      showMenuOnLeftClick: true,
+    });
+  })().finally(() => {
+    setupPromise = null;
   });
+
+  return setupPromise;
 }
 
 /** Rebuild the tray menu (call after monitors / configs change). */

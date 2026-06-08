@@ -1,5 +1,5 @@
 import { load, type Store } from "@tauri-apps/plugin-store";
-import type { HotkeyBinding, InputSource, KvmConfig, MonitorInfo } from "@/lib/types";
+import type { InputSource, KvmConfig, MonitorInfo } from "@/lib/types";
 import { DEFAULT_PRESET_ID, clonePresetSources } from "@/lib/presets";
 
 /**
@@ -20,6 +20,15 @@ export interface MonitorInputConfig {
   /** The (possibly edited) input sources written to the monitor. */
   sources: InputSource[];
 }
+
+type StoredInputSource = Partial<InputSource> & {
+  label: string;
+  value: number;
+};
+
+type StoredMonitorInputConfig = Partial<MonitorInputConfig> & {
+  sources?: StoredInputSource[];
+};
 
 /**
  * Stable persistence key for a monitor: name + serial. The session `id` is
@@ -48,12 +57,33 @@ export function defaultConfig(): MonitorInputConfig {
   };
 }
 
+function normalizeInputSource(source: StoredInputSource): InputSource {
+  return {
+    label: source.label,
+    value: source.value,
+    enabled: source.enabled ?? true,
+    accelerator: source.accelerator ?? "",
+  };
+}
+
+function normalizeConfig(
+  stored: StoredMonitorInputConfig | null | undefined,
+): MonitorInputConfig {
+  if (!stored || !stored.sources || stored.sources.length === 0) {
+    return defaultConfig();
+  }
+  return {
+    presetId: stored.presetId ?? DEFAULT_PRESET_ID,
+    sources: stored.sources.map(normalizeInputSource),
+  };
+}
+
 export async function loadConfig(
   monitor: MonitorInfo,
 ): Promise<MonitorInputConfig> {
   const store = await getStore();
-  const stored = await store.get<MonitorInputConfig>(monitorKey(monitor));
-  return stored ?? defaultConfig();
+  const stored = await store.get<StoredMonitorInputConfig>(monitorKey(monitor));
+  return normalizeConfig(stored);
 }
 
 export async function saveConfig(
@@ -67,42 +97,11 @@ export async function saveConfig(
   await store.save();
 }
 
-// --- Global hotkeys (PR3) ---------------------------------------------------
-
-/** Store key for the global-hotkey bindings array. */
-const HOTKEYS_KEY = "__hotkeys";
-
-/**
- * Default global hotkeys: Alt+F9~F12, carried over from the legacy Windows tool.
- * Each fires "apply to all" with an MCCS-standard input code (the default
- * preset). Codes are monitor-specific, so users can rebind both the accelerator
- * and the target value in settings.
- */
-export const DEFAULT_HOTKEYS: HotkeyBinding[] = [
-  { accelerator: "Alt+F9", label: "DisplayPort 1", value: 15 },
-  { accelerator: "Alt+F10", label: "DisplayPort 2", value: 16 },
-  { accelerator: "Alt+F11", label: "HDMI 1", value: 17 },
-  { accelerator: "Alt+F12", label: "HDMI 2", value: 18 },
-];
-
-/** Load persisted hotkey bindings, falling back to the defaults. */
-export async function loadHotkeys(): Promise<HotkeyBinding[]> {
-  const store = await getStore();
-  const stored = await store.get<HotkeyBinding[]>(HOTKEYS_KEY);
-  return stored ?? DEFAULT_HOTKEYS.map((h) => ({ ...h }));
-}
-
-/** Persist hotkey bindings. */
-export async function saveHotkeys(hotkeys: HotkeyBinding[]): Promise<void> {
-  const store = await getStore();
-  await store.set(HOTKEYS_KEY, hotkeys);
-  await store.save();
-}
-
 // --- KVM post-action (PR5) --------------------------------------------------
 
 /** Store key for the KVM post-action configuration. */
 const KVM_KEY = "__kvm";
+export const KVM_CONFIG_CHANGED_EVENT = "kvm-config-changed";
 
 /**
  * Default KVM config: the legacy "switch to Type-C, then power off this
@@ -121,12 +120,22 @@ export const DEFAULT_KVM_CONFIG: KvmConfig = {
 export async function loadKvmConfig(): Promise<KvmConfig> {
   const store = await getStore();
   const stored = await store.get<KvmConfig>(KVM_KEY);
-  return stored ?? { ...DEFAULT_KVM_CONFIG };
+  return {
+    ...DEFAULT_KVM_CONFIG,
+    ...stored,
+    action: "shutdown",
+  };
 }
 
 /** Persist KVM config. */
 export async function saveKvmConfig(config: KvmConfig): Promise<void> {
   const store = await getStore();
-  await store.set(KVM_KEY, config);
+  const normalized = { ...config, action: "shutdown" as const };
+  await store.set(KVM_KEY, normalized);
   await store.save();
+  window.dispatchEvent(
+    new CustomEvent<KvmConfig>(KVM_CONFIG_CHANGED_EVENT, {
+      detail: normalized,
+    }),
+  );
 }

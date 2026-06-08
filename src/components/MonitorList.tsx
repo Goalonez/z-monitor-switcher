@@ -32,13 +32,13 @@ export function MonitorList({ state, onSwitched }: MonitorListProps) {
       {status === "loading" && (
         <div className="flex items-center justify-center gap-2 py-12 text-muted-foreground">
           <Loader2 className="h-5 w-5 animate-spin" />
-          正在枚举显示器…
+          正在查找显示器…
         </div>
       )}
 
       {status === "error" && (
         <div className="space-y-3 rounded-lg border border-destructive/50 bg-destructive/5 p-6 text-center">
-          <p className="text-sm text-destructive">枚举失败：{error}</p>
+          <p className="text-sm text-destructive">查找显示器失败：{error}</p>
           <Button variant="outline" size="sm" onClick={refresh}>
             重试
           </Button>

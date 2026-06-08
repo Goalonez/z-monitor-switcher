@@ -14,19 +14,19 @@ import type { InputPreset, InputSource } from "@/lib/types";
 
 /** VESA MCCS standard input-source codes. */
 const MCCS_STANDARD: InputSource[] = [
-  { label: "DisplayPort 1", value: 15 },
-  { label: "DisplayPort 2", value: 16 },
-  { label: "HDMI 1", value: 17 },
-  { label: "HDMI 2", value: 18 },
-  { label: "USB-C", value: 27 },
+  { label: "DisplayPort 1", value: 15, enabled: true, accelerator: "" },
+  { label: "DisplayPort 2", value: 16, enabled: true, accelerator: "" },
+  { label: "HDMI 1", value: 17, enabled: true, accelerator: "" },
+  { label: "HDMI 2", value: 18, enabled: true, accelerator: "" },
+  { label: "USB-C", value: 27, enabled: true, accelerator: "" },
 ];
 
 /** Mapping the existing Windows tool measured in the field (LG-style). */
 const LG_ALT: InputSource[] = [
-  { label: "Type-C", value: 15 },
-  { label: "DisplayPort", value: 16 },
-  { label: "HDMI 1", value: 17 },
-  { label: "HDMI 2", value: 18 },
+  { label: "Type-C", value: 15, enabled: true, accelerator: "" },
+  { label: "DisplayPort", value: 16, enabled: true, accelerator: "" },
+  { label: "HDMI 1", value: 17, enabled: true, accelerator: "" },
+  { label: "HDMI 2", value: 18, enabled: true, accelerator: "" },
 ];
 
 export const INPUT_PRESETS: InputPreset[] = [

@@ -22,9 +22,10 @@ export async function setInput(monitorId: string, value: number): Promise<void> 
 
 /**
  * Switch every DDC-capable monitor to the same raw VCP 0x60 `value`
- * ("apply to all"). Used by the tray "apply to all" item and global hotkeys.
- * Rejects (string message) only if every controllable monitor refused the
- * write; a partial success resolves.
+ * ("apply to all"). Retained as a backend fallback for older automation paths;
+ * the current UI switches per monitor so users do not accidentally affect every
+ * display. Rejects (string message) only if every controllable monitor refused
+ * the write; a partial success resolves.
  */
 export async function applyInputToAll(value: number): Promise<void> {
   return invoke<void>("apply_input_to_all", { value });
@@ -66,13 +67,13 @@ export async function probeCapabilities(
 }
 
 /**
- * Run a KVM post-switch action (sleep / shutdown) on THIS machine (R11).
+ * Run the KVM post-switch shutdown action on THIS machine (R11).
  *
- * DANGER: `"sleep"` / `"shutdown"` are irreversible and can lose unsaved work.
- * NEVER call this without first obtaining an explicit, cancelable user
- * confirmation (see {@link PostActionDialog}). The Rust side does not add its
- * own confirmation. `"none"` is a no-op. Rejects (string message) only if the
- * OS command fails to launch.
+ * DANGER: shutdown is irreversible and can lose unsaved work. NEVER call this
+ * without first obtaining an explicit, cancelable user confirmation (see
+ * {@link PostActionDialog}). The Rust side does not add its own confirmation.
+ * `"none"` is a no-op. Rejects (string message) only if the OS command fails to
+ * launch.
  */
 export async function runPostAction(action: PostAction): Promise<void> {
   return invoke<void>("run_post_action", { action });

@@ -10,6 +10,7 @@
     "core:window:allow-set-focus",
     "core:window:allow-unminimize",
     "core:app:allow-app-hide",
+    "core:app:allow-default-window-icon",
     "core:tray:default",
     "core:menu:default",
     "opener:default",

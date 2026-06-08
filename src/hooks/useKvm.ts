@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import type { KvmConfig, PostAction } from "@/lib/types";
-import { loadKvmConfig, saveKvmConfig, DEFAULT_KVM_CONFIG } from "@/lib/store";
+import {
+  loadKvmConfig,
+  saveKvmConfig,
+  DEFAULT_KVM_CONFIG,
+  KVM_CONFIG_CHANGED_EVENT,
+} from "@/lib/store";
 import { runPostAction } from "@/lib/api";
+import { refreshTrayMenu } from "@/lib/tray";
 
 type Status = "loading" | "ready";
 
@@ -33,8 +39,8 @@ interface UseKvmResult {
  * Owns the KVM post-action config and the confirm-before-run flow (R11).
  *
  * SAFETY: `maybeTrigger` only ever opens a confirmation dialog; the irreversible
- * sleep/shutdown command runs solely from `confirm` (after the user confirms or
- * the dialog countdown elapses). It is never executed implicitly.
+ * shutdown command runs solely from `confirm` (after the user confirms or the
+ * dialog countdown elapses). It is never executed implicitly.
  */
 export function useKvm(): UseKvmResult {
   const [config, setConfig] = useState<KvmConfig>(DEFAULT_KVM_CONFIG);
@@ -50,15 +56,20 @@ export function useKvm(): UseKvmResult {
       setConfig(loaded);
       setStatus("ready");
     });
+    const handleConfigChanged = (event: Event) => {
+      setConfig((event as CustomEvent<KvmConfig>).detail);
+    };
+    window.addEventListener(KVM_CONFIG_CHANGED_EVENT, handleConfigChanged);
     return () => {
       cancelled = true;
+      window.removeEventListener(KVM_CONFIG_CHANGED_EVENT, handleConfigChanged);
     };
   }, []);
 
   const updateConfig = useCallback((patch: Partial<KvmConfig>) => {
     setConfig((prev) => {
-      const next = { ...prev, ...patch };
-      void saveKvmConfig(next);
+      const next = { ...prev, ...patch, action: "shutdown" as const };
+      void saveKvmConfig(next).then(refreshTrayMenu);
       return next;
     });
   }, []);
@@ -66,11 +77,10 @@ export function useKvm(): UseKvmResult {
   const maybeTrigger = useCallback(
     (value: number) => {
       if (!config.enabled) return;
-      if (config.action === "none") return;
       if (value !== config.triggerValue) return;
       // Open the confirmation dialog — DO NOT run the action here.
       setError(null);
-      setPending(config.action);
+      setPending("shutdown");
     },
     [config],
   );
@@ -81,7 +91,7 @@ export function useKvm(): UseKvmResult {
     setError(null);
     runPostAction(pending)
       .then(() => {
-        // On success the OS is sleeping/shutting down; nothing more to do.
+        // On success the OS is shutting down; nothing more to do.
         setRunning(false);
         setPending("none");
       })

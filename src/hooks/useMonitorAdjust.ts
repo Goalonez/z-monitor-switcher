@@ -55,11 +55,11 @@ export function useMonitorAdjust(monitor: MonitorInfo): UseMonitorAdjustResult {
       .then((c) => {
         if (cancelled) return;
         setCaps(c);
-        // Seed sliders with best-effort current values (default 50 / 0 when the
-        // read gave nothing). These are initial values only; after the first
-        // user change the optimistic state is the source of truth.
+        // Seed sliders with best-effort current values. Do not invent a default
+        // volume: the user specifically needs the external display's current
+        // speaker level, and a fake value would be misleading.
         setBrightnessState(c.brightness.current ?? 50);
-        setVolumeState(c.volume.supported ? (c.volume.current ?? 0) : null);
+        setVolumeState(c.volume.supported ? c.volume.current : null);
         setStatus("ready");
       })
       .catch((err: unknown) => {
