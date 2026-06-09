@@ -68,6 +68,50 @@ export function Settings({ open, settings, onOpenChange }: SettingsProps) {
             />
           </div>
 
+          {settings.os === "macos" && (
+            <>
+              <div className="flex items-center justify-between gap-3">
+                <label className="font-medium">{t("showMenuBar")}</label>
+                <input
+                  type="checkbox"
+                  className="h-4 w-4"
+                  checked={settings.showTray}
+                  disabled={settings.status === "loading"}
+                  onChange={(event) =>
+                    settings.toggleShowTray(event.target.checked)
+                  }
+                />
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <label className="font-medium">{t("showDock")}</label>
+                <input
+                  type="checkbox"
+                  className="h-4 w-4"
+                  checked={settings.showDock}
+                  disabled={settings.status === "loading"}
+                  onChange={(event) =>
+                    settings.toggleShowDock(event.target.checked)
+                  }
+                />
+              </div>
+            </>
+          )}
+
+          {settings.os === "windows" && (
+            <div className="flex items-center justify-between gap-3">
+              <label className="font-medium">{t("showTray")}</label>
+              <input
+                type="checkbox"
+                className="h-4 w-4"
+                checked={settings.showTray}
+                disabled={settings.status === "loading"}
+                onChange={(event) =>
+                  settings.toggleShowTray(event.target.checked)
+                }
+              />
+            </div>
+          )}
+
           <div className="flex items-center justify-between gap-3">
             <label className="font-medium">{t("language")}</label>
             <div className="inline-flex rounded-md border p-0.5">

@@ -9,7 +9,6 @@ import {
   type KvmConfigChangedDetail,
 } from "@/lib/store";
 import { runPostAction } from "@/lib/api";
-import { refreshTrayMenu } from "@/lib/tray";
 
 type Status = "loading" | "ready";
 
@@ -103,7 +102,7 @@ export function useKvm(): UseKvmResult {
       setActiveKey(targetKey);
       setConfig((prev) => {
         const next = { ...prev, ...patch, action: "shutdown" as const };
-        void saveKvmConfig(next, monitor).then(refreshTrayMenu);
+        void saveKvmConfig(next, monitor);
         return next;
       });
       setStatus("ready");

@@ -9,7 +9,12 @@ import {
 } from "@/lib/store";
 import { clonePresetSources } from "@/lib/presets";
 import { applyConfiguredHotkeys } from "@/lib/hotkeys";
-import { refreshTrayMenu } from "@/lib/tray";
+import {
+  emitConfigChanged,
+  emitInputChanged,
+  onConfigChanged,
+  onInputChanged,
+} from "@/lib/events";
 
 type SwitchStatus = "idle" | "switching" | "error";
 
@@ -67,12 +72,46 @@ export function useMonitorInput(
     };
   }, [monitor]);
 
+  // Cross-window sync: mirror active-input and config changes made in the other
+  // window for this same monitor. Listeners only setState/reload and never
+  // re-emit, so there is no echo loop; self-receipt is idempotent.
+  useEffect(() => {
+    let active = true;
+    const unlisteners: Array<() => void> = [];
+    const track = (p: Promise<() => void>) => {
+      void p.then((fn) => {
+        if (active) unlisteners.push(fn);
+        else fn();
+      });
+    };
+    track(
+      onInputChanged((payload) => {
+        if (!active || payload.monitorId !== monitor.id) return;
+        setActiveValue(payload.value);
+      }),
+    );
+    track(
+      onConfigChanged((payload) => {
+        if (!active || payload.monitorId !== monitor.id) return;
+        void loadConfig(monitor).then((loaded) => {
+          if (active) setConfig(loaded);
+        });
+      }),
+    );
+    return () => {
+      active = false;
+      for (const fn of unlisteners) fn();
+    };
+  }, [monitor]);
+
   const persist = useCallback(
     (next: MonitorInputConfig) => {
       setConfig(next);
       void saveConfig(monitor, next)
         .then(async () => {
-          await refreshTrayMenu().catch(() => {});
+          // Broadcast so the other window reloads the renamed/enabled/added/
+          // removed sources and preset changes made here.
+          emitConfigChanged({ monitorId: monitor.id });
           const hotkeyError = await applyConfiguredHotkeys().catch(
             (err: unknown) => (err instanceof Error ? err.message : String(err)),
           );
@@ -90,6 +129,9 @@ export function useMonitorInput(
       // Optimistic: reflect the new input immediately, before the slow DDC write.
       const previous = activeValue;
       setActiveValue(value);
+      // Broadcast the optimistic active value so the other window's quick-switch
+      // highlight stays in sync (listener only setState, never re-emits).
+      emitInputChanged({ monitorId: monitor.id, value });
       setStatus("switching");
       setError(null);
 

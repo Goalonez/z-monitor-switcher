@@ -78,3 +78,29 @@ export async function probeCapabilities(
 export async function runPostAction(action: PostAction): Promise<void> {
   return invoke<void>("run_post_action", { action });
 }
+
+/**
+ * Open a URL in the user's default system browser. `window.open` is unreliable
+ * inside the Tauri webview, so external links go through the Rust opener.
+ */
+export async function openUrl(url: string): Promise<void> {
+  return invoke<void>("open_url", { url });
+}
+
+/** Quit the whole app (tray panel / homepage Quit button). */
+export async function quitApp(): Promise<void> {
+  return invoke<void>("quit_app");
+}
+
+/** Current OS as a lowercase string ("macos" / "windows" / "linux"). */
+export async function getOs(): Promise<string> {
+  return invoke<string>("get_os");
+}
+
+/**
+ * macOS: show/hide the Dock icon at runtime by switching the activation policy.
+ * No-op on other platforms.
+ */
+export async function setDockVisible(visible: boolean): Promise<void> {
+  return invoke<void>("set_dock_visible", { visible });
+}

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { MonitorList } from "@/components/MonitorList";
 import { PostActionDialog } from "@/components/PostActionDialog";
 import { Settings } from "@/components/Settings";
@@ -9,8 +10,9 @@ import { useMonitors } from "@/hooks/useMonitors";
 import { useKvm } from "@/hooks/useKvm";
 import { useSettings } from "@/hooks/useSettings";
 import { useI18n } from "@/lib/i18n";
-import { refreshTrayMenu } from "@/lib/tray";
-import { Github, Settings as SettingsIcon } from "lucide-react";
+import { openUrl, quitApp } from "@/lib/api";
+import { Github, Power, Settings as SettingsIcon } from "lucide-react";
+import logoUrl from "@/assets/logo.png";
 
 function App() {
   const windowLabel = getCurrentWebviewWindow().label;
@@ -19,26 +21,38 @@ function App() {
 
 function MainWindow() {
   const monitorsState = useMonitors();
-  const { status, monitors } = monitorsState;
   const kvm = useKvm();
   const settings = useSettings();
   const { t } = useI18n();
   const [settingsOpen, setSettingsOpen] = useState(false);
 
-  // Keep the tray's per-monitor submenus in sync with the live monitor list.
-  // The tray itself is created in useSettings; here we only rebuild its menu
-  // once enumeration succeeds (best-effort, tray errors must not break the UI).
+  // Raise the main window to the front on launch (it can open behind other
+  // apps). Pulse always-on-top briefly so it surfaces without staying pinned.
   useEffect(() => {
-    if (status === "ready") {
-      void refreshTrayMenu().catch(() => {});
-    }
-  }, [status, monitors]);
+    const win = getCurrentWindow();
+    void win.setFocus().catch(() => {});
+    void win.setAlwaysOnTop(true).catch(() => {});
+    const timer = setTimeout(() => {
+      void win.setAlwaysOnTop(false).catch(() => {});
+    }, 400);
+    return () => clearTimeout(timer);
+  }, []);
 
   return (
-    <main className="mx-auto w-full max-w-[460px] space-y-3 p-3">
-      <header className="flex items-center justify-between gap-3">
-        <h1 className="truncate text-base font-semibold">{t("appName")}</h1>
-        <div className="flex items-center gap-1">
+    <main className="mx-auto w-full max-w-[540px] space-y-3 p-3 px-5">
+      <header className="flex items-center gap-3 pt-1">
+        <img src={logoUrl} alt={t("appName")} className="h-10 w-10 rounded-xl" />
+        <h1 className="text-xl font-bold">{t("appName")}</h1>
+        <div className="ml-auto flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => void quitApp().catch(() => {})}
+            aria-label={t("quit")}
+            title={t("quit")}
+          >
+            <Power className="h-4 w-4" />
+          </Button>
           <Button
             variant="ghost"
             size="icon"
@@ -52,10 +66,8 @@ function MainWindow() {
             variant="ghost"
             size="icon"
             onClick={() =>
-              window.open(
-                "https://github.com/Goalonez/z-monitor-switcher",
-                "_blank",
-                "noopener,noreferrer",
+              void openUrl("https://github.com/Goalonez/z-monitor-switcher").catch(
+                () => {},
               )
             }
             aria-label={t("openGithub")}

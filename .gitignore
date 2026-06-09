@@ -21,3 +21,6 @@ CLAUDE.md
 .history/
 .agents/
 .codex/
+
+src-tauri/icons/android/
+src-tauri/icons/ios/

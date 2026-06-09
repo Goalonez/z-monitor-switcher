@@ -10,13 +10,14 @@
     "frontendDist": "../dist"
   },
   "app": {
+    "macOSPrivateApi": true,
     "windows": [
       {
         "label": "main",
         "title": "z-monitor-switcher",
-        "width": 460,
+        "width": 540,
         "height": 620,
-        "minWidth": 400,
+        "minWidth": 480,
         "minHeight": 560,
         "resizable": true
       }

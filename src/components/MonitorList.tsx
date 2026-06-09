@@ -4,6 +4,7 @@ import type { useKvm } from "@/hooks/useKvm";
 import type { MonitorInfo } from "@/lib/types";
 import { MonitorCard } from "@/components/MonitorCard";
 import { Button } from "@/components/ui/button";
+import { Select } from "@/components/ui/select";
 import { useI18n } from "@/lib/i18n";
 import { formatMonitorName } from "@/lib/monitor";
 import { Loader2, RefreshCw, MonitorOff, Settings2 } from "lucide-react";
@@ -55,23 +56,17 @@ export function MonitorList({
   return (
     <div className="space-y-3">
       <div className="space-y-2">
-        <select
-          className="h-9 w-full rounded-md border bg-background px-2 text-sm"
+        <Select
           value={selectedMonitor?.id ?? ""}
           disabled={status !== "ready" || monitors.length === 0}
-          onChange={(event) => setSelectedId(event.target.value)}
+          onChange={setSelectedId}
           aria-label={t("selectMonitor")}
-        >
-          {monitors.length === 0 ? (
-            <option value="">{t("noExternalMonitor")}</option>
-          ) : (
-            monitors.map((monitor) => (
-              <option key={monitor.id} value={monitor.id}>
-                {formatMonitorName(monitor)}
-              </option>
-            ))
-          )}
-        </select>
+          placeholder={t("noExternalMonitor")}
+          options={monitors.map((monitor) => ({
+            value: monitor.id,
+            label: formatMonitorName(monitor),
+          }))}
+        />
 
         <div className="grid grid-cols-2 gap-2">
           <Button

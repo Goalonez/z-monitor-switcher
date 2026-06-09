@@ -93,6 +93,59 @@ fn run_post_action(action: PostAction) -> Result<(), MonitorError> {
     post_action::execute(action)
 }
 
+/// Open a URL in the user's default system browser (used by the GitHub button).
+/// `window.open` is unreliable inside the Tauri webview, so the frontend routes
+/// external links through this command.
+#[tauri::command]
+fn open_url(app: tauri::AppHandle, url: String) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+    app.opener()
+        .open_url(url, None::<&str>)
+        .map_err(|e| e.to_string())
+}
+
+/// Quit the whole app (used by the tray panel and the homepage Quit button).
+/// The window close button only hides to tray, so this is the explicit exit.
+#[tauri::command]
+fn quit_app(app: tauri::AppHandle) {
+    app.exit(0);
+}
+
+/// Return the current OS as a lowercase string so the frontend can render
+/// platform-specific settings without pulling in the os plugin.
+#[tauri::command]
+fn get_os() -> String {
+    if cfg!(target_os = "macos") {
+        "macos".into()
+    } else if cfg!(target_os = "windows") {
+        "windows".into()
+    } else {
+        "linux".into()
+    }
+}
+
+/// Show or hide the macOS Dock icon at runtime by switching the activation
+/// policy (Regular = Dock + app menu, Accessory = menu-bar-only). No-op on
+/// other platforms.
+#[tauri::command]
+fn set_dock_visible(app: tauri::AppHandle, visible: bool) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        let policy = if visible {
+            tauri::ActivationPolicy::Regular
+        } else {
+            tauri::ActivationPolicy::Accessory
+        };
+        app.set_activation_policy(policy)
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (app, visible);
+    }
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let builder = tauri::Builder::default()
@@ -107,7 +160,7 @@ pub fn run() {
     let builder = builder
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(
-            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            tauri_plugin_autostart::MacosLauncher::AppleScript,
             None,
         ));
 
@@ -141,8 +194,28 @@ pub fn run() {
             set_brightness,
             set_volume,
             probe_capabilities,
-            run_post_action
+            run_post_action,
+            open_url,
+            quit_app,
+            get_os,
+            set_dock_visible
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            // macOS: clicking the Dock icon while the window is hidden (we
+            // hide-to-tray on close) sends a Reopen event. Re-show the main
+            // window so the Dock click behaves like a normal app launch.
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen { .. } = event {
+                use tauri::Manager;
+                if let Some(w) = app.get_webview_window("main") {
+                    let _ = w.show();
+                    let _ = w.unminimize();
+                    let _ = w.set_focus();
+                }
+            }
+            // Silence unused warnings on non-macOS builds.
+            let _ = (app, &event);
+        });
 }

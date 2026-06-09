@@ -101,6 +101,46 @@ export async function saveConfig(
   await store.save();
 }
 
+// --- Last adjusted levels (brightness / volume) -----------------------------
+
+/**
+ * Persist the last brightness/volume the user set per monitor so the panel can
+ * fall back to a remembered value when a DDC READ fails (e.g. VCP 0x62 volume
+ * reads return nothing on some displays). Keyed by the stable `monitorKey`.
+ */
+const LAST_BRIGHTNESS_PREFIX = "__lastBrightness::";
+const LAST_VOLUME_PREFIX = "__lastVolume::";
+
+export async function loadLastLevels(
+  monitor: MonitorInfo,
+): Promise<{ brightness: number | null; volume: number | null }> {
+  const store = await getStore();
+  const key = monitorKey(monitor);
+  const brightness =
+    (await store.get<number>(`${LAST_BRIGHTNESS_PREFIX}${key}`)) ?? null;
+  const volume =
+    (await store.get<number>(`${LAST_VOLUME_PREFIX}${key}`)) ?? null;
+  return { brightness, volume };
+}
+
+export async function saveLastBrightness(
+  monitor: MonitorInfo,
+  value: number,
+): Promise<void> {
+  const store = await getStore();
+  await store.set(`${LAST_BRIGHTNESS_PREFIX}${monitorKey(monitor)}`, value);
+  await store.save();
+}
+
+export async function saveLastVolume(
+  monitor: MonitorInfo,
+  value: number,
+): Promise<void> {
+  const store = await getStore();
+  await store.set(`${LAST_VOLUME_PREFIX}${monitorKey(monitor)}`, value);
+  await store.save();
+}
+
 // --- KVM post-action (PR5) --------------------------------------------------
 
 /** Legacy global store key for the KVM post-action configuration. */

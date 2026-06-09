@@ -80,7 +80,7 @@ export function MonitorCard({
             onSwitched={onSwitched}
           />
         )}
-        {supported && <AdjustControls monitor={monitor} compact />}
+        {supported && <AdjustControls monitor={monitor} layout="vertical" />}
       </CardContent>
     </Card>
   );

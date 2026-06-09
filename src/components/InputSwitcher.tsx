@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { MonitorInfo } from "@/lib/types";
 import { useMonitorInput } from "@/hooks/useMonitorInput";
 import { DEFAULT_PRESET_ID } from "@/lib/presets";
@@ -53,6 +53,7 @@ export function InputSwitcher({
   } = useMonitorInput(monitor, onSwitched);
   const { t } = useI18n();
   const [recordingIndex, setRecordingIndex] = useState<number | null>(null);
+  const recordButtonRef = useRef<HTMLButtonElement>(null);
   const enabledSources = config.sources.filter((source) => source.enabled);
 
   useEffect(() => {
@@ -76,8 +77,20 @@ export function InputSwitcher({
       setRecordingIndex(null);
     };
 
+    // Clicking anywhere outside the active record button cancels recording;
+    // clicking the button itself keeps its own toggle behavior.
+    const handlePointerDown = (event: MouseEvent) => {
+      const button = recordButtonRef.current;
+      if (button && button.contains(event.target as Node)) return;
+      setRecordingIndex(null);
+    };
+
     window.addEventListener("keydown", handleKeyDown, true);
-    return () => window.removeEventListener("keydown", handleKeyDown, true);
+    document.addEventListener("mousedown", handlePointerDown, true);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown, true);
+      document.removeEventListener("mousedown", handlePointerDown, true);
+    };
   }, [recordingIndex, updateSource]);
 
   useEffect(() => {
@@ -125,7 +138,7 @@ export function InputSwitcher({
           onClick={() => onManageOpenChange?.(false)}
         >
           <div
-            className="flex max-h-[86vh] w-full max-w-xl flex-col rounded-lg border bg-background shadow-lg"
+            className="flex max-h-[86vh] w-full max-w-2xl flex-col rounded-lg border bg-background shadow-lg"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="flex items-center justify-between border-b px-4 py-3">
@@ -159,7 +172,7 @@ export function InputSwitcher({
               {config.sources.map((source, index) => (
                 <div
                   key={index}
-                  className="grid grid-cols-[auto_minmax(5.5rem,7rem)_4rem_minmax(5.5rem,1fr)_auto_auto] items-center gap-2 rounded-md border p-2"
+                  className="grid grid-cols-[auto_minmax(5.5rem,7rem)_4rem_minmax(8rem,1fr)_auto_auto] items-center gap-2 rounded-md border p-2"
                 >
                   <input
                     type="checkbox"
@@ -193,6 +206,7 @@ export function InputSwitcher({
                     }}
                   />
                   <Button
+                    ref={recordingIndex === index ? recordButtonRef : undefined}
                     variant={recordingIndex === index ? "secondary" : "outline"}
                     size="sm"
                     className="min-w-0 px-2"
@@ -203,8 +217,8 @@ export function InputSwitcher({
                     }
                     title={t("setShortcut")}
                   >
-                    <Keyboard className="h-3.5 w-3.5" />
-                    <span className="min-w-0 truncate">
+                    <Keyboard className="h-3.5 w-3.5 shrink-0" />
+                    <span className="min-w-0">
                       {recordingIndex === index
                         ? t("pressShortcut")
                         : displayAccelerator(source.accelerator) || t("shortcut")}
