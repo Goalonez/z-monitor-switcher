@@ -12,6 +12,9 @@ concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   validate:
     name: Validate release inputs
@@ -43,9 +46,10 @@ jobs:
             exit 1
           fi
 
-          git fetch origin main:refs/remotes/origin/main --prune
+          MAIN_REF="refs/remotes/origin/main"
+          git fetch --no-tags origin "+refs/heads/main:${MAIN_REF}"
           TAG_COMMIT="$(git rev-list -n 1 "${TAG}")"
-          if ! git merge-base --is-ancestor "${TAG_COMMIT}" origin/main; then
+          if ! git merge-base --is-ancestor "${TAG_COMMIT}" "${MAIN_REF}"; then
             echo "Tag ${TAG} (${TAG_COMMIT}) must point to a commit reachable from origin/main." >&2
             exit 1
           fi
