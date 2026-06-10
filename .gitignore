@@ -17,10 +17,11 @@ src-tauri/gen/schemas/
 AGENTS.md
 CLAUDE.md
 .claude/
+.codex/
+.opencode/
+.agents/
 .trellis/
 .history/
-.agents/
-.codex/
 
 src-tauri/icons/android/
 src-tauri/icons/ios/

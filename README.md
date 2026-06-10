@@ -7,7 +7,8 @@
 ## 功能
 
 - **输入源切换**（VCP 0x60）：每显示器独立配置；可启用/停用单个输入源，可新增/删除自定义输入源，可一键切换 LG 标准映射；乐观 UI（不依赖回读，0x60 读取不可靠）。
-- **亮度**（VCP 0x10）/ **音量**（VCP 0x62）：滑块 debounce；音量会优先读取当前值，读不到时仍允许在 DDC 外接屏上尝试写入。
+- **显示器亮度**（VCP 0x10）/ **显示器音量**（VCP 0x62）：滑块 debounce；音量会优先读取当前值，读不到时仍允许在 DDC 外接屏上尝试写入。
+- **本机控制**：macOS 提供系统音量调节；Windows 提供本机屏幕亮度（笔记本内置屏）和系统音量调节。本机控制独立显示一次，不绑定到每张显示器卡片。
 - **菜单栏 / 托盘**：左键点击托盘图标打开紧凑面板（亮度/音量滑块、输入源快速切换、显示主窗口、退出）；右键点击直接显示主窗口；不再使用原生菜单。托盘图标显示为彩色 logo。每显示器面板只显示已生效输入源。
 - **输入源快捷键**：在“管理输入源”里为某个输入源录制快捷键，按下后快速切换到该显示器的指定输入源；默认不注册 F9 等快捷键，避免系统冲突。录制时点击别处即可取消录制。
 - **开机自启**：默认关闭，可在设置中开启（macOS 通过 AppleScript 登录项注册，安装为 .app 后可在“系统设置 → 登录项”中看到）。
@@ -25,16 +26,21 @@ DDC/CI 只对**外接显示器**有效，且依连接方式而异。
 
 ### macOS（Apple Silicon）
 - ✅ 外接显示器经 **USB-C / DisplayPort / Thunderbolt** 连接：支持（私有 `IOAVService` API）。
+- ✅ **系统音量**：支持 CoreAudio HAL 音量调节，优先控制 MacBook 内建输出设备；找不到内建输出时退回到默认/可控输出设备。
 - ❌ **机身 HDMI 口**（M1 全系 / 入门款 M2 Mac mini）：不支持 DDC。
 - ❌ **内置屏 / Apple 显示器（Studio Display、Pro Display XDR）**：用原生 Apple 协议，不支持 DDC。
+- ❌ **MacBook 内建屏硬件亮度**：不支持；本项目不做软件遮罩/gamma 类“假亮度”。
 - ❌ **DisplayLink 坞站/转接**：不透传 DDC。
 - ❌ Intel Mac：未适配（仅 Apple Silicon 路径）。
 
-不支持的显示器仍会在列表中显示，并标注红色“不支持”徽章与原因，UI 不会误导也不会崩溃（R9）。
+MacBook 内建屏不进入显示器切换列表，相关能力统一放在“本机控制”里；外接 DDC 显示器继续进入显示器切换与调节区。UI 不会把系统音量重复放进每张显示器卡片。
 
 ### Windows
 - ✅ 实现 MCCS 的外接显示器经 `dxva2.dll` 控制（亮度/输入/音量）。
+- ✅ 笔记本内置屏亮度经 Windows WMI `root\\wmi` 控制，作为“本机屏幕亮度”独立显示一次。
+- ✅ 默认输出设备系统音量作为“系统音量”独立显示一次。
 - ⚠️ 部分显示器 DDC 固件有 bug，写入可能失败（已做重试）；多显示器身份识别依赖枚举顺序，重插/重启后顺序可能变化。
+- ⚠️ Windows 本机控制当前通过系统 PowerShell/WMI/CoreAudio COM 桥接实现；需在 Windows 主机实机验证。
 
 ### 通用
 - 输入源 0x60 数值**因显示器而异**（如 USB-C 常以 DisplayPort 流呈现）。现有工具 15=Type-C 与 MCCS 15=DisplayPort 冲突 → 控制值可每显示器配置、自定义新增、手动保存。
@@ -93,9 +99,11 @@ macOS 控制走 **私有框架** `IOAVServiceCreate / IOAVServiceReadI2C / IOAVS
 |---|---|---|
 | DDC 后端 | `ddc-macos`（IOAVService 私有 API） | `ddc-winapi`（dxva2.dll） |
 | 可控连接 | USB-C / DP / TB 外接屏 | 实现 MCCS 的外接屏 |
+| 本机屏幕亮度 | 不支持 | WMI `WmiMonitorBrightnessMethods` |
+| 系统音量 | CoreAudio HAL（优先内建输出） | 默认音频端点 |
 | 热插拔监听 | 事件自动重枚举 | 手动刷新 |
 | 关机 | `osascript`（System Events） | `shutdown /s /t 0` |
-| 托盘 | 菜单栏彩色 logo 图标，默认 Accessory（可切换显示 Dock） | 系统托盘 |
+| 托盘 | 菜单栏彩色 logo 图标，默认显示 Dock（可切换为仅菜单栏） | 系统托盘 |
 
 ---
 

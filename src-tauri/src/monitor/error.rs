@@ -18,6 +18,10 @@ pub enum MonitorError {
     #[error("DDC/CI operation failed: {0}")]
     Ddc(String),
 
+    /// A local native brightness / system-volume operation failed.
+    #[error("native control failed: {0}")]
+    NativeControl(String),
+
     /// A KVM post-switch action (sleep / shutdown) failed to launch (PR5).
     #[error("post-action failed: {0}")]
     PostAction(String),

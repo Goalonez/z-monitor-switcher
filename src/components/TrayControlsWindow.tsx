@@ -3,14 +3,21 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { LogicalSize } from "@tauri-apps/api/dpi";
 import { AdjustControls } from "@/components/AdjustControls";
 import { InputQuickSwitch } from "@/components/InputQuickSwitch";
+import { NativeControls } from "@/components/NativeControls";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { useMonitors } from "@/hooks/useMonitors";
 import { useI18n } from "@/lib/i18n";
-import { formatMonitorName } from "@/lib/monitor";
+import { controllableMonitors, formatMonitorName } from "@/lib/monitor";
 import { showMainWindow } from "@/lib/tray";
 import { quitApp } from "@/lib/api";
-import { Loader2, MonitorOff, Power, RefreshCw, SquareArrowOutUpRight } from "lucide-react";
+import {
+  Loader2,
+  MonitorOff,
+  Power,
+  RefreshCw,
+  SquareArrowOutUpRight,
+} from "lucide-react";
 
 /**
  * macOS Control-Center-style panel opened by left-clicking the tray icon.
@@ -24,20 +31,26 @@ export function TrayControlsWindow() {
   const { t } = useI18n();
   const [selectedId, setSelectedId] = useState("");
   const rootRef = useRef<HTMLElement | null>(null);
+  const displayMonitors = useMemo(
+    () => controllableMonitors(monitors),
+    [monitors],
+  );
   const selectedMonitor = useMemo(
-    () => monitors.find((monitor) => monitor.id === selectedId) ?? monitors[0],
-    [monitors, selectedId],
+    () =>
+      displayMonitors.find((monitor) => monitor.id === selectedId) ??
+      displayMonitors[0],
+    [displayMonitors, selectedId],
   );
 
   useEffect(() => {
-    if (status !== "ready" || monitors.length === 0) {
+    if (status !== "ready" || displayMonitors.length === 0) {
       setSelectedId("");
       return;
     }
-    if (!monitors.some((monitor) => monitor.id === selectedId)) {
-      setSelectedId(monitors[0].id);
+    if (!displayMonitors.some((monitor) => monitor.id === selectedId)) {
+      setSelectedId(displayMonitors[0].id);
     }
-  }, [monitors, selectedId, status]);
+  }, [displayMonitors, selectedId, status]);
 
   // Make this window's document transparent so only the rounded card shows.
   useEffect(() => {
@@ -75,12 +88,9 @@ export function TrayControlsWindow() {
   }, []);
 
   return (
-    <main
-      ref={rootRef}
-      className="box-border w-[320px] overflow-hidden p-2"
-    >
+    <main ref={rootRef} className="box-border w-[320px] overflow-hidden p-2">
       <div className="space-y-3 rounded-xl border bg-background p-3 shadow-xl">
-        {monitors.length > 1 && (
+        {displayMonitors.length > 1 && (
           <div className="flex items-center gap-2">
             <Select
               className="min-w-0 flex-1"
@@ -89,7 +99,7 @@ export function TrayControlsWindow() {
               onChange={setSelectedId}
               aria-label={t("selectMonitor")}
               placeholder={t("noExternalMonitor")}
-              options={monitors.map((monitor) => ({
+              options={displayMonitors.map((monitor) => ({
                 value: monitor.id,
                 label: formatMonitorName(monitor),
               }))}
@@ -120,24 +130,20 @@ export function TrayControlsWindow() {
           </div>
         )}
 
-        {status === "ready" && monitors.length === 0 && (
+        {status === "ready" && displayMonitors.length === 0 && (
           <div className="flex flex-col items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
             <MonitorOff className="h-7 w-7" />
             {t("noMonitorDetected")}
           </div>
         )}
 
-        {status === "ready" &&
-          selectedMonitor &&
-          !selectedMonitor.ddcSupported && (
-            <div className="rounded-md border p-3 text-sm text-muted-foreground">
-              {selectedMonitor.unsupportedReason ?? t("unsupportedDdc")}
-            </div>
-          )}
-
-        {status === "ready" && selectedMonitor?.ddcSupported && (
+        {status === "ready" && selectedMonitor && (
           <>
-            <AdjustControls key={selectedMonitor.id} monitor={selectedMonitor} compact />
+            <AdjustControls
+              key={selectedMonitor.id}
+              monitor={selectedMonitor}
+              compact
+            />
             <div className="border-t pt-3">
               <InputQuickSwitch
                 key={`input-${selectedMonitor.id}`}
@@ -146,6 +152,8 @@ export function TrayControlsWindow() {
             </div>
           </>
         )}
+
+        <NativeControls compact />
 
         <div className="flex items-center gap-2 border-t pt-3">
           <Button

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { MonitorList } from "@/components/MonitorList";
+import { NativeControls } from "@/components/NativeControls";
 import { PostActionDialog } from "@/components/PostActionDialog";
 import { Settings } from "@/components/Settings";
 import { TrayControlsWindow } from "@/components/TrayControlsWindow";
@@ -77,6 +78,7 @@ function MainWindow() {
           </Button>
         </div>
       </header>
+      <NativeControls />
       <MonitorList
         state={monitorsState}
         kvm={kvm}

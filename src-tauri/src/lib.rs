@@ -1,8 +1,10 @@
 mod display_watch;
 mod monitor;
+mod native_control;
 mod post_action;
 
 use monitor::{backend, MonitorCapabilities, MonitorControl, MonitorError, MonitorInfo};
+use native_control::NativeControlCapabilities;
 use post_action::PostAction;
 
 /// Enumerate connected displays. Best-effort: a backend that cannot read a
@@ -80,6 +82,26 @@ fn set_volume(monitor_id: String, value: u16) -> Result<(), MonitorError> {
 #[tauri::command]
 fn probe_capabilities(monitor_id: String) -> Result<MonitorCapabilities, MonitorError> {
     backend().probe_capabilities(&monitor_id)
+}
+
+/// Probe local-machine controls that are not tied to DDC monitor cards:
+/// Windows native panel brightness and system output volume, plus macOS system
+/// output volume. Unsupported features are reported per-field.
+#[tauri::command]
+fn probe_native_controls() -> Result<NativeControlCapabilities, MonitorError> {
+    native_control::probe()
+}
+
+/// Set the local machine's native panel brightness (Windows only for this task).
+#[tauri::command]
+fn set_native_brightness(value: u16) -> Result<(), MonitorError> {
+    native_control::set_native_brightness(value)
+}
+
+/// Set the local machine's system output volume.
+#[tauri::command]
+fn set_system_volume(value: u16) -> Result<(), MonitorError> {
+    native_control::set_system_volume(value)
 }
 
 /// Execute a KVM post-switch action (sleep / shutdown) on THIS machine (R11).
@@ -166,11 +188,11 @@ pub fn run() {
 
     builder
         .setup(|_app| {
-            // macOS: run as a menu-bar "accessory" app (no Dock icon, no app
-            // menu) so the tray is the primary surface. This must be set at
-            // startup. Other platforms ignore activation policy.
+            // macOS: default to a normal Dock-visible app. The frontend can
+            // switch to Accessory later if the persisted setting asks for a
+            // menu-bar-only app.
             #[cfg(target_os = "macos")]
-            _app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+            _app.set_activation_policy(tauri::ActivationPolicy::Regular);
 
             // Start watching for display hot-plug / reconfiguration so the
             // frontend can re-enumerate automatically (macOS native callback;
@@ -194,6 +216,9 @@ pub fn run() {
             set_brightness,
             set_volume,
             probe_capabilities,
+            probe_native_controls,
+            set_native_brightness,
+            set_system_volume,
             run_post_action,
             open_url,
             quit_app,

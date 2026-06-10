@@ -71,6 +71,24 @@ export interface MonitorCapabilities {
   volume: FeatureCapability;
 }
 
+/** Mirror of Rust `NativeControlFeature` for local-machine controls. */
+export interface NativeControlFeature {
+  supported: boolean;
+  current: number | null;
+  maximum: number;
+  unavailableReason: string | null;
+}
+
+/**
+ * Local-machine controls shown once in the app, independent from DDC monitor
+ * cards. macOS supports system volume only; Windows supports native panel
+ * brightness and system volume when the OS exposes those providers.
+ */
+export interface NativeControlCapabilities {
+  nativeBrightness: NativeControlFeature;
+  systemVolume: NativeControlFeature;
+}
+
 /**
  * KVM post-switch action executed on THIS machine after an input switch.
  * The UI only exposes shutdown; `"none"` is used to hide the confirmation.

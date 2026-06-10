@@ -48,7 +48,7 @@ export function useSettings(): UseSettingsResult {
   const [autostart, setAutostartState] = useState(false);
   const [os, setOs] = useState("");
   const [showTray, setShowTrayState] = useState(true);
-  const [showDock, setShowDockState] = useState(false);
+  const [showDock, setShowDockState] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -60,9 +60,10 @@ export function useSettings(): UseSettingsResult {
 
         const detectedOs = await getOs().catch(() => "");
         const store = await load(STORE_FILE, { defaults: {}, autoSave: true });
-        // Defaults: tray ON everywhere; Dock OFF (the app runs Accessory).
+        // Defaults: tray ON everywhere; Dock ON on macOS so the app behaves
+        // like a normal windowed app unless the user opts into menu-bar-only.
         const trayVisible = (await store.get<boolean>(SHOW_TRAY_KEY)) ?? true;
-        const dockVisible = (await store.get<boolean>(SHOW_DOCK_KEY)) ?? false;
+        const dockVisible = (await store.get<boolean>(SHOW_DOCK_KEY)) ?? true;
 
         // Apply persisted values to the running app.
         await setTrayVisible(trayVisible).catch(() => {});

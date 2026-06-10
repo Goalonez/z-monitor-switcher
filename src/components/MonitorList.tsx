@@ -6,7 +6,7 @@ import { MonitorCard } from "@/components/MonitorCard";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { useI18n } from "@/lib/i18n";
-import { formatMonitorName } from "@/lib/monitor";
+import { controllableMonitors, formatMonitorName } from "@/lib/monitor";
 import { Loader2, RefreshCw, MonitorOff, Settings2 } from "lucide-react";
 
 interface MonitorListProps {
@@ -28,20 +28,26 @@ export function MonitorList({
   const { t } = useI18n();
   const [selectedId, setSelectedId] = useState("");
   const [manageOpen, setManageOpen] = useState(false);
+  const displayMonitors = useMemo(
+    () => controllableMonitors(monitors),
+    [monitors],
+  );
   const selectedMonitor = useMemo(
-    () => monitors.find((monitor) => monitor.id === selectedId) ?? monitors[0],
-    [monitors, selectedId],
+    () =>
+      displayMonitors.find((monitor) => monitor.id === selectedId) ??
+      displayMonitors[0],
+    [displayMonitors, selectedId],
   );
 
   useEffect(() => {
-    if (status !== "ready" || monitors.length === 0) {
+    if (status !== "ready" || displayMonitors.length === 0) {
       setSelectedId("");
       return;
     }
-    if (!monitors.some((monitor) => monitor.id === selectedId)) {
-      setSelectedId(monitors[0].id);
+    if (!displayMonitors.some((monitor) => monitor.id === selectedId)) {
+      setSelectedId(displayMonitors[0].id);
     }
-  }, [monitors, selectedId, status]);
+  }, [displayMonitors, selectedId, status]);
 
   useEffect(() => {
     setManageOpen(false);
@@ -58,11 +64,11 @@ export function MonitorList({
       <div className="space-y-2">
         <Select
           value={selectedMonitor?.id ?? ""}
-          disabled={status !== "ready" || monitors.length === 0}
+          disabled={status !== "ready" || displayMonitors.length === 0}
           onChange={setSelectedId}
           aria-label={t("selectMonitor")}
           placeholder={t("noExternalMonitor")}
-          options={monitors.map((monitor) => ({
+          options={displayMonitors.map((monitor) => ({
             value: monitor.id,
             label: formatMonitorName(monitor),
           }))}
@@ -73,7 +79,7 @@ export function MonitorList({
             variant="outline"
             size="sm"
             onClick={() => setManageOpen(true)}
-            disabled={!selectedMonitor?.ddcSupported}
+            disabled={!selectedMonitor}
           >
             <Settings2 className="h-4 w-4" />
             {t("manageInputs")}
@@ -109,7 +115,7 @@ export function MonitorList({
         </div>
       )}
 
-      {status === "ready" && monitors.length === 0 && (
+      {status === "ready" && displayMonitors.length === 0 && (
         <div className="flex flex-col items-center justify-center gap-2 py-12 text-muted-foreground">
           <MonitorOff className="h-8 w-8" />
           <p>{t("noMonitorDetected")}</p>

@@ -3,9 +3,9 @@
 //! On Apple Silicon this goes through the private `IOAVService` APIs and only
 //! works for external USB-C / DisplayPort / Thunderbolt displays. Built-in
 //! panels, Apple displays, DisplayLink docks, and the built-in HDMI port do
-//! NOT speak DDC — `Monitor::enumerate()` simply omits them. To satisfy R9 we
-//! also enumerate *all* active CoreGraphics displays and mark anything not in
-//! the DDC set as "unsupported" rather than hiding it.
+//! NOT speak DDC — `Monitor::enumerate()` simply omits them. Built-in panels
+//! are represented by the native-control UI, not by the DDC monitor list. Other
+//! active non-DDC displays are still returned as unsupported external displays.
 
 use core_graphics::display::CGDisplay;
 use ddc::Ddc;
@@ -46,26 +46,28 @@ impl MonitorControl for MacOsMonitors {
             });
         }
 
-        // All active displays; anything not DDC-capable is shown as unsupported
-        // so the UI gives a clear status instead of silently dropping it.
+        // All active displays; built-in panels are intentionally skipped
+        // because local brightness/system volume live in the native-control
+        // area. Other active non-DDC displays are shown as unsupported so the
+        // main UI can surface clear external-display status when needed.
         if let Ok(active) = CGDisplay::active_displays() {
             for display_id in active {
                 if ddc_ids.contains(&display_id) {
                     continue;
                 }
                 let display = CGDisplay::new(display_id);
-                let reason = if display.is_builtin() {
-                    "内置/Apple 显示器使用原生协议，不支持 DDC/CI"
-                } else {
-                    "该显示器或连接方式不支持 DDC/CI（如机身 HDMI / DisplayLink）"
-                };
+                if display.is_builtin() {
+                    continue;
+                }
                 infos.push(MonitorInfo {
                     id: display_id.to_string(),
                     name: format!("Display {display_id}"),
                     manufacturer: None,
                     serial: None,
                     ddc_supported: false,
-                    unsupported_reason: Some(reason.to_string()),
+                    unsupported_reason: Some(
+                        "该显示器或连接方式不支持 DDC/CI（如机身 HDMI / DisplayLink）".to_string(),
+                    ),
                 });
             }
         }

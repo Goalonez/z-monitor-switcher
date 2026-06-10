@@ -36,6 +36,7 @@ export function onMonitorsChanged(
  */
 
 const LEVELS_CHANGED_EVENT = "monitor-levels-changed";
+const NATIVE_LEVELS_CHANGED_EVENT = "native-levels-changed";
 const INPUT_CHANGED_EVENT = "monitor-input-changed";
 const CONFIG_CHANGED_EVENT = "monitor-config-changed";
 
@@ -43,6 +44,11 @@ export interface LevelsChangedPayload {
   monitorId: string;
   brightness?: number;
   volume?: number;
+}
+
+export interface NativeLevelsChangedPayload {
+  nativeBrightness?: number;
+  systemVolume?: number;
 }
 
 export interface InputChangedPayload {
@@ -65,6 +71,23 @@ export function onLevelsChanged(
 ): Promise<UnlistenFn> {
   return listen<LevelsChangedPayload>(LEVELS_CHANGED_EVENT, (event) =>
     handler(event.payload),
+  );
+}
+
+/** Broadcast a settled native brightness/system-volume change. */
+export function emitNativeLevelsChanged(
+  payload: NativeLevelsChangedPayload,
+): void {
+  void emit(NATIVE_LEVELS_CHANGED_EVENT, payload).catch(() => {});
+}
+
+/** Subscribe to cross-window native brightness/system-volume changes. */
+export function onNativeLevelsChanged(
+  handler: (payload: NativeLevelsChangedPayload) => void,
+): Promise<UnlistenFn> {
+  return listen<NativeLevelsChangedPayload>(
+    NATIVE_LEVELS_CHANGED_EVENT,
+    (event) => handler(event.payload),
   );
 }
 

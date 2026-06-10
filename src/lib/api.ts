@@ -1,5 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { MonitorCapabilities, MonitorInfo, PostAction } from "@/lib/types";
+import type {
+  MonitorCapabilities,
+  MonitorInfo,
+  NativeControlCapabilities,
+  PostAction,
+} from "@/lib/types";
 
 /**
  * Thin typed wrappers around the Rust Tauri commands.
@@ -64,6 +69,21 @@ export async function probeCapabilities(
   monitorId: string,
 ): Promise<MonitorCapabilities> {
   return invoke<MonitorCapabilities>("probe_capabilities", { monitorId });
+}
+
+/** Probe local-machine controls (native screen brightness / system volume). */
+export async function probeNativeControls(): Promise<NativeControlCapabilities> {
+  return invoke<NativeControlCapabilities>("probe_native_controls");
+}
+
+/** Set the local machine's native panel brightness (Windows when supported). */
+export async function setNativeBrightness(value: number): Promise<void> {
+  return invoke<void>("set_native_brightness", { value });
+}
+
+/** Set the local machine's default system output volume. */
+export async function setSystemVolume(value: number): Promise<void> {
+  return invoke<void>("set_system_volume", { value });
 }
 
 /**

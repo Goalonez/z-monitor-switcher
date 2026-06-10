@@ -75,7 +75,7 @@ export function AdjustControls({
                 value={volume ?? 0}
                 max={volumeMax}
                 onValueChange={changeVolume}
-                aria-label={t("volume")}
+                aria-label={t("displayVolume")}
                 className="h-28"
               />
               <span className="text-sm tabular-nums text-muted-foreground">
@@ -87,7 +87,9 @@ export function AdjustControls({
               {error ? t("volumeUnavailable") : t("volumeUnsupported")}
             </div>
           )}
-          <span className="text-xs text-muted-foreground">{t("volume")}</span>
+          <span className="text-xs text-muted-foreground">
+            {t("displayVolume")}
+          </span>
         </div>
       </div>
     );
@@ -118,7 +120,7 @@ export function AdjustControls({
             value={volume ?? 0}
             max={volumeMax}
             onValueChange={changeVolume}
-            aria-label={t("volume")}
+            aria-label={t("displayVolume")}
             className={sliderClassName}
           />
           <span className="w-10 shrink-0 text-right text-sm tabular-nums text-muted-foreground">
