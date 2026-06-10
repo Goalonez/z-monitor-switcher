@@ -11,7 +11,7 @@ export type Language = "zh" | "en";
 
 const DICT = {
   zh: {
-    appName: "z-monitor-switcher",
+    appName: "Z Monitor Switcher",
     settings: "设置",
     github: "GitHub",
     openGithub: "打开 GitHub 项目",
@@ -80,7 +80,7 @@ const DICT = {
     shutdownNow: "立即关机",
   },
   en: {
-    appName: "z-monitor-switcher",
+    appName: "Z Monitor Switcher",
     settings: "Settings",
     github: "GitHub",
     openGithub: "Open GitHub repository",

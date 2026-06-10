@@ -96,7 +96,7 @@ async function showTrayControls(event?: TrayIconEvent): Promise<void> {
 
   const controls = new WebviewWindow(TRAY_CONTROLS_WINDOW_LABEL, {
     url: "/",
-    title: "z-monitor-switcher",
+    title: "Z Monitor Switcher",
     width: PANEL_LOGICAL_WIDTH,
     height: PANEL_LOGICAL_HEIGHT,
     minWidth: PANEL_MIN_WIDTH,
@@ -180,7 +180,7 @@ export async function setupTray(): Promise<void> {
       // light/dark menu bars like other menu-bar apps. macOS-only option,
       // ignored on Windows / Linux (the same PNG is used there in color).
       iconAsTemplate: true,
-      tooltip: "z-monitor-switcher",
+      tooltip: "Z Monitor Switcher",
       // No native menu is attached; make left-click delivery unambiguous on
       // macOS (a menu would make the OS swallow the click `action` event).
       showMenuOnLeftClick: false,

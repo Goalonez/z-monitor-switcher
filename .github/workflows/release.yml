@@ -1,0 +1,267 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate release inputs
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+      version: ${{ steps.meta.outputs.version }}
+      notes_file: ${{ steps.meta.outputs.notes_file }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Validate tag and main ancestry
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          TAG="${GITHUB_REF_NAME}"
+          if [[ ! "${TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Release tags must match vX.Y.Z, got: ${TAG}" >&2
+            exit 1
+          fi
+
+          git fetch origin main:refs/remotes/origin/main --prune
+          TAG_COMMIT="$(git rev-list -n 1 "${TAG}")"
+          if ! git merge-base --is-ancestor "${TAG_COMMIT}" origin/main; then
+            echo "Tag ${TAG} (${TAG_COMMIT}) must point to a commit reachable from origin/main." >&2
+            exit 1
+          fi
+
+          VERSION="${TAG#v}"
+          NOTES_FILE="docs/releases/${TAG}.md"
+
+          {
+            echo "tag=${TAG}"
+            echo "version=${VERSION}"
+            echo "notes_file=${NOTES_FILE}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Validate versions and release notes
+        shell: bash
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          NOTES_FILE: ${{ steps.meta.outputs.notes_file }}
+        run: |
+          set -euo pipefail
+
+          node <<'NODE'
+          const fs = require("node:fs");
+
+          const version = process.env.VERSION;
+          const notesFile = process.env.NOTES_FILE;
+          const errors = [];
+
+          const packageVersion = JSON.parse(fs.readFileSync("package.json", "utf8")).version;
+          const tauriVersion = JSON.parse(fs.readFileSync("src-tauri/tauri.conf.json", "utf8")).version;
+          const cargoToml = fs.readFileSync("src-tauri/Cargo.toml", "utf8");
+          const cargoVersion = cargoToml.match(/^\[package\][\s\S]*?^version\s*=\s*"([^"]+)"/m)?.[1];
+
+          for (const [file, fileVersion] of [
+            ["package.json", packageVersion],
+            ["src-tauri/tauri.conf.json", tauriVersion],
+            ["src-tauri/Cargo.toml", cargoVersion],
+          ]) {
+            if (fileVersion !== version) {
+              errors.push(`${file} version is ${fileVersion ?? "missing"}, expected ${version}`);
+            }
+          }
+
+          if (!fs.existsSync(notesFile)) {
+            errors.push(`${notesFile} is missing`);
+          } else {
+            const notes = fs.readFileSync(notesFile, "utf8").trim();
+            if (!notes) errors.push(`${notesFile} is empty`);
+            if (!notes.includes("## English")) errors.push(`${notesFile} must include a "## English" section`);
+            if (!notes.includes("## 简体中文")) errors.push(`${notesFile} must include a "## 简体中文" section`);
+          }
+
+          if (errors.length) {
+            console.error(errors.join("\n"));
+            process.exit(1);
+          }
+          NODE
+
+  build-macos:
+    name: Build macOS DMG
+    runs-on: macos-14
+    needs: validate
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Enable pnpm
+        shell: bash
+        run: corepack enable
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Verify Apple Silicon runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$(uname -m)" != "arm64" ]]; then
+            echo "This workflow publishes a macOS-arm64 asset and must run on an arm64 macOS runner." >&2
+            exit 1
+          fi
+
+      - name: Install dependencies
+        shell: bash
+        run: pnpm install --frozen-lockfile
+
+      - name: Build DMG
+        shell: bash
+        run: pnpm tauri build --bundles dmg --ci --no-sign
+
+      - name: Collect DMG
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+
+          count="$(find src-tauri/target -path "*/release/bundle/dmg/*.dmg" -type f | wc -l | tr -d " ")"
+          if [[ "${count}" != "1" ]]; then
+            echo "Expected exactly one DMG, found ${count}" >&2
+            find src-tauri/target -path "*/release/bundle/dmg/*.dmg" -type f >&2
+            exit 1
+          fi
+
+          dmg="$(find src-tauri/target -path "*/release/bundle/dmg/*.dmg" -type f -print -quit)"
+          cp "${dmg}" "release-assets/Z-Monitor-Switcher.dmg"
+
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-dmg
+          path: release-assets/*.dmg
+          if-no-files-found: error
+
+  build-windows:
+    name: Build Windows NSIS installer
+    runs-on: windows-latest
+    needs: validate
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Enable pnpm
+        shell: pwsh
+        run: corepack enable
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Verify x64 Windows runner
+        shell: pwsh
+        run: |
+          if (-not [Environment]::Is64BitOperatingSystem) {
+            throw "This workflow publishes a Windows-x64 asset and must run on a 64-bit Windows runner."
+          }
+
+      - name: Install dependencies
+        shell: pwsh
+        run: pnpm install --frozen-lockfile
+
+      - name: Build NSIS installer
+        shell: pwsh
+        run: pnpm tauri build --bundles nsis --ci
+
+      - name: Collect NSIS installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          New-Item -ItemType Directory -Force -Path release-assets | Out-Null
+
+          $installers = @(Get-ChildItem -Path src-tauri/target -Recurse -Filter *.exe | Where-Object {
+            $_.FullName -match "\\release\\bundle\\nsis\\"
+          })
+
+          if ($installers.Count -ne 1) {
+            Write-Error "Expected exactly one NSIS installer, found $($installers.Count): $($installers.FullName -join ', ')"
+          }
+
+          Copy-Item $installers[0].FullName "release-assets/Z-Monitor-Switcher.exe"
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-nsis
+          path: release-assets/*.exe
+          if-no-files-found: error
+
+  publish:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs:
+      - validate
+      - build-macos
+      - build-windows
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ needs.validate.outputs.tag }}
+      NOTES_FILE: ${{ needs.validate.outputs.notes_file }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Verify release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          test -f "release-assets/Z-Monitor-Switcher.dmg"
+          test -f "release-assets/Z-Monitor-Switcher.exe"
+
+          if find release-assets -type f -name "*.msi" | grep -q .; then
+            echo "MSI assets are not published for this project." >&2
+            exit 1
+          fi
+
+      - name: Publish release
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          gh release create "${TAG}" release-assets/* \
+            --title "Z Monitor Switcher ${TAG}" \
+            --notes-file "${NOTES_FILE}" \
+            --verify-tag

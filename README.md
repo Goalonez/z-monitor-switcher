@@ -1,123 +1,163 @@
-# z-monitor-switcher
+# Z Monitor Switcher
 
-跨平台（macOS + Windows）外接显示器输入源切换工具。通过 DDC/CI 切换输入源，并提供亮度、音量调节、菜单栏快捷操作、输入源快捷键，以及“切换后关机”的 KVM 交接能力。技术栈：Tauri v2（Rust 后端）+ React + Vite + shadcn/ui（pnpm）。
+[English](README_EN.md) | 简体中文
 
----
+一个跨平台的外接显示器控制工具，支持通过 DDC/CI 协议切换输入源、调节亮度和音量。特别适合使用 KVM 或多台电脑共享一台显示器的用户。
 
-## 功能
+<div align="center">
+  <img src="index.png" alt="Z Monitor Switcher" width="800">
+</div>
 
-- **输入源切换**（VCP 0x60）：每显示器独立配置；可启用/停用单个输入源，可新增/删除自定义输入源，可一键切换 LG 标准映射；乐观 UI（不依赖回读，0x60 读取不可靠）。
-- **显示器亮度**（VCP 0x10）/ **显示器音量**（VCP 0x62）：滑块 debounce；音量会优先读取当前值，读不到时仍允许在 DDC 外接屏上尝试写入。
-- **本机控制**：macOS 提供系统音量调节；Windows 提供本机屏幕亮度（笔记本内置屏）和系统音量调节。本机控制独立显示一次，不绑定到每张显示器卡片。
-- **菜单栏 / 托盘**：左键点击托盘图标打开紧凑面板（亮度/音量滑块、输入源快速切换、显示主窗口、退出）；右键点击直接显示主窗口；不再使用原生菜单。托盘图标显示为彩色 logo。每显示器面板只显示已生效输入源。
-- **输入源快捷键**：在“管理输入源”里为某个输入源录制快捷键，按下后快速切换到该显示器的指定输入源；默认不注册 F9 等快捷键，避免系统冲突。录制时点击别处即可取消录制。
-- **开机自启**：默认关闭，可在设置中开启（macOS 通过 AppleScript 登录项注册，安装为 .app 后可在“系统设置 → 登录项”中看到）。
-- **平台显示设置**：macOS 可开关“显示菜单栏”和“显示 Dock 栏”（在 Dock 与 Accessory 模式间切换）；Windows 可开关“显示系统托盘”。为避免无入口，菜单栏与 Dock 不会同时被隐藏。
-- **退出**：主窗口右上角“退出”按钮，或托盘面板内“退出”均可彻底退出应用。
-- **切换后关机**：把显示器切到指定输入源后，对**本机**执行关机（见下文“KVM 交接动作”）。
-- **显示器热插拔自动重枚举**（macOS）。
-- 关闭窗口 = 最小化到托盘（进程保活，托盘/快捷键继续可用）。
+## ✨ 主要功能
 
----
+- 🔄 **输入源快速切换** - 一键在不同输入源（HDMI、DisplayPort、USB-C 等）之间切换
+- 🔆 **亮度调节** - 直接控制外接显示器的硬件亮度
+- 🔊 **音量控制** - 调节显示器内置扬声器音量和系统音量
+- ⌨️ **全局快捷键** - 为常用输入源设置快捷键，快速切换
+- 🎯 **菜单栏/托盘快捷操作** - 无需打开主窗口即可快速调节
+- 🔌 **热插拔支持** - 自动检测显示器连接变化（macOS）
+- 🚀 **开机自启** - 可选择开机自动启动
 
-## 支持范围与已知限制
+## 📥 下载安装
 
-DDC/CI 只对**外接显示器**有效，且依连接方式而异。
+### macOS
+1. 从 [Releases](https://github.com/goalonez/z-monitor-switcher/releases) 下载最新的 `.dmg` 文件
+2. 打开 DMG 文件，将应用拖入 Applications 文件夹
+3. 首次打开时，右键点击应用选择"打开"（或在"系统设置 → 隐私与安全性"中允许）
 
-### macOS（Apple Silicon）
-- ✅ 外接显示器经 **USB-C / DisplayPort / Thunderbolt** 连接：支持（私有 `IOAVService` API）。
-- ✅ **系统音量**：支持 CoreAudio HAL 音量调节，优先控制 MacBook 内建输出设备；找不到内建输出时退回到默认/可控输出设备。
-- ❌ **机身 HDMI 口**（M1 全系 / 入门款 M2 Mac mini）：不支持 DDC。
-- ❌ **内置屏 / Apple 显示器（Studio Display、Pro Display XDR）**：用原生 Apple 协议，不支持 DDC。
-- ❌ **MacBook 内建屏硬件亮度**：不支持；本项目不做软件遮罩/gamma 类“假亮度”。
-- ❌ **DisplayLink 坞站/转接**：不透传 DDC。
-- ❌ Intel Mac：未适配（仅 Apple Silicon 路径）。
+如果仍无法打开，可在终端中仅对已安装的 app bundle 解除 quarantine：
 
-MacBook 内建屏不进入显示器切换列表，相关能力统一放在“本机控制”里；外接 DDC 显示器继续进入显示器切换与调节区。UI 不会把系统音量重复放进每张显示器卡片。
+```bash
+sudo xattr -dr com.apple.quarantine "/Applications/Z Monitor Switcher.app"
+```
+
+请不要对整个 `/Applications/` 目录执行该命令。
+
+**系统要求**：macOS 12.0+ (Apple Silicon)
 
 ### Windows
-- ✅ 实现 MCCS 的外接显示器经 `dxva2.dll` 控制（亮度/输入/音量）。
-- ✅ 笔记本内置屏亮度经 Windows WMI `root\\wmi` 控制，作为“本机屏幕亮度”独立显示一次。
-- ✅ 默认输出设备系统音量作为“系统音量”独立显示一次。
-- ⚠️ 部分显示器 DDC 固件有 bug，写入可能失败（已做重试）；多显示器身份识别依赖枚举顺序，重插/重启后顺序可能变化。
-- ⚠️ Windows 本机控制当前通过系统 PowerShell/WMI/CoreAudio COM 桥接实现；需在 Windows 主机实机验证。
+1. 从 [Releases](https://github.com/goalonez/z-monitor-switcher/releases) 下载最新的 `.exe` 安装包
+2. 运行安装程序
+3. 如遇到 SmartScreen 警告，点击"更多信息 → 仍要运行"
 
-### 通用
-- 输入源 0x60 数值**因显示器而异**（如 USB-C 常以 DisplayPort 流呈现）。现有工具 15=Type-C 与 MCCS 15=DisplayPort 冲突 → 控制值可每显示器配置、自定义新增、手动保存。
-- DDC 写入慢（数十~数百 ms），滑块已 debounce、切换走乐观 UI；写入内部重试 N 次。
+**系统要求**：Windows 10/11
 
----
+## 🚀 快速开始
 
-## 私有 API 说明（macOS）
+1. **启动应用** - 首次启动后，应用会在菜单栏（macOS）或系统托盘（Windows）显示图标
+2. **查看显示器** - 点击托盘图标或主窗口查看已连接的外接显示器
+3. **配置输入源** - 在显示器卡片上管理可用的输入源（可自定义输入源名称和对应的数值）
+4. **快速切换** - 点击输入源按钮即可切换，或在"管理输入源"中为常用输入源设置快捷键
+5. **调节参数** - 使用滑块调节亮度和音量
 
-macOS 控制走 **私有框架** `IOAVServiceCreate / IOAVServiceReadI2C / IOAVServiceWriteI2C`（`ddc-macos` haimgel fork，与 m1ddc / MonitorControl / Lunar 同一套机制）。
+### 📝 使用技巧
 
-- **后果**：无法上架 Mac App Store；理论上未来 macOS 收紧 Gatekeeper/公证可能影响（目前正常）。本项目以自用为主，可接受。
-- **回滚思路**：若私有 API 失效，可退化为软件层调光（gamma / 遮罩，不在 v1 范围），或改用 m1ddc sidecar；输入源切换无软件替代，只能依赖 DDC。
+- **托盘快捷面板**：左键点击托盘图标打开快捷面板，可快速切换输入源和调节参数
+- **录制快捷键**：在"管理输入源"对话框中，点击快捷键输入框，按下想要的组合键即可（点击输入框外部取消录制）
+- **KVM 模式**：开启"切换后关机"功能，当切换到指定输入源时会弹出倒计时确认框，可实现多机自动切换
+- **自定义输入源**：每个显示器的输入源数值可能不同，可通过"管理输入源"添加或修改
 
----
+## 💡 支持范围
 
-## 运行方式（未签名 / 未公证）
+### ✅ 支持的设备
 
-本项目**默认不做付费代码签名 / 公证**，本地构建自用。
+**macOS (Apple Silicon)**
+- 通过 USB-C、DisplayPort、Thunderbolt 连接的外接显示器
+- MacBook 系统音量调节
 
-- **macOS**：首次打开会被 Gatekeeper 拦截 → 在 Finder 中**右键 → 打开**，确认一次即可（或“系统设置 → 隐私与安全性 → 仍要打开”）。
-- **Windows**：SmartScreen 可能弹窗 → 点击“更多信息 → 仍要运行”。
+**Windows**
+- 支持 MCCS 协议的外接显示器
+- 笔记本内置屏幕亮度调节
+- 系统音量调节
 
-架构上不阻断后续补签名/公证（Tauri 的签名/`updater` 流程可随时接入）。
+### ❌ 已知限制
 
----
+**macOS**
+- ❌ MacBook 内置屏幕（不支持硬件亮度控制）
+- ❌ Apple 显示器（Studio Display、Pro Display XDR 等使用专有协议）
+- ❌ M1/M2 入门款机身 HDMI 接口（不支持 DDC）
+- ❌ DisplayLink 坞站/转接器（不透传 DDC 信号）
+- ❌ Intel Mac（未适配）
 
-## KVM 交接动作（用法与风险）
+**Windows**
+- ⚠️ 部分显示器的 DDC 固件可能存在兼容性问题
+- ⚠️ 多显示器时，重启后设备顺序可能变化
 
-主场景（D1）：一台显示器在本 Mac 与 Windows PC 之间切换。在某台机器上把显示器**切给另一台**后，让**本机**关机，实现 KVM 式交接。
+**通用限制**
+- 输入源的数值（VCP 0x60）因显示器品牌和型号而异，需要自行配置
+- DDC 写入速度较慢（数十到数百毫秒），属于协议特性
 
-**配置**：显示器列表顶部 → “切换后关机” → 开启。默认沿用旧工具“切 Type-C 并关本机”的控制值（默认关闭，避免误触）。
+## 🔧 常见问题
 
-**触发**：当任一显示器被切到配置的触发输入值时，弹出**可取消的倒计时确认框**。
+<details>
+<summary><b>为什么找不到我的显示器？</b></summary>
 
-**安全机制（关键）**：
-- 关机不可逆、可能丢失未保存工作 → **执行前必有用户确认**：倒计时确认框，用户可随时**取消**；不确认/不到时不会执行。
-- 后端 `run_post_action` 命令**不会**被隐式调用，仅在用户确认（或倒计时结束）后执行。
-- 跨平台命令：
-  - 关机：macOS `osascript`（System Events 优雅关机，免 sudo）；Windows `shutdown /s /t 0`
+- **macOS**：确保使用 USB-C/DP/TB 连接，机身 HDMI 口不支持；MacBook 内置屏和 Apple 显示器不使用 DDC 协议
+- **Windows**：确保显示器支持 DDC/CI（MCCS），可在显示器 OSD 菜单中查看是否有 DDC/CI 选项
+- 尝试重插显示器连接线或重启应用
+</details>
 
-**回滚思路**：关闭“切换后关机”即可完全禁用。命令以 `spawn` 启动，失败会在确认框内回显错误，不会静默。
+<details>
+<summary><b>输入源切换不工作？</b></summary>
 
----
+- 输入源的数值因显示器而异，需要在"管理输入源"中配置正确的数值
+- 部分显示器的 DDC 固件可能有延迟或需要重试
+- 可以尝试手动保存配置后重试
+</details>
 
-## 显示器变更监听
+<details>
+<summary><b>快捷键不生效？</b></summary>
 
-- **macOS**：注册 `CGDisplayRegisterReconfigurationCallback`，热插拔/重配置后 emit `monitors-changed` 事件 → 前端自动重新 `list_monitors`。
-- **Windows**：暂未接入 `WM_DISPLAYCHANGE` 原生监听 → 退化为窗口内可见的“刷新”按钮（手动重枚举）。后续可补。
+- 确保快捷键没有与系统或其他应用冲突
+- 尝试使用不同的快捷键组合（避免使用 F9 等系统保留键）
+- 重新录制快捷键
+</details>
 
----
+<details>
+<summary><b>KVM 模式安全吗？</b></summary>
 
-## 平台差异小结
+- 关机操作会弹出倒计时确认框，可以随时取消
+- 只有在用户确认后才会执行关机命令
+- 可以随时在设置中关闭"切换后关机"功能
+</details>
 
-| 能力 | macOS (Apple Silicon) | Windows |
-|---|---|---|
-| DDC 后端 | `ddc-macos`（IOAVService 私有 API） | `ddc-winapi`（dxva2.dll） |
-| 可控连接 | USB-C / DP / TB 外接屏 | 实现 MCCS 的外接屏 |
-| 本机屏幕亮度 | 不支持 | WMI `WmiMonitorBrightnessMethods` |
-| 系统音量 | CoreAudio HAL（优先内建输出） | 默认音频端点 |
-| 热插拔监听 | 事件自动重枚举 | 手动刷新 |
-| 关机 | `osascript`（System Events） | `shutdown /s /t 0` |
-| 托盘 | 菜单栏彩色 logo 图标，默认显示 Dock（可切换为仅菜单栏） | 系统托盘 |
+<details>
+<summary><b>为什么需要允许应用运行？</b></summary>
 
----
+- 应用未经过代码签名和公证（个人开源项目）
+- 应用本身是安全的，源代码完全开放
+- macOS：右键打开或在"系统设置 → 隐私与安全性"中允许
+- 如仍无法打开，仅对 `"/Applications/Z Monitor Switcher.app"` 执行 `xattr` 备用命令，不要作用于整个 `/Applications/` 目录
+- Windows：在 SmartScreen 警告中选择"仍要运行"
+</details>
 
-## 开发
+## 🛠️ 开发与发布
 
 ```bash
 pnpm install
-pnpm run tauri dev      # 开发
-pnpm run tauri build    # 本地构建产物
-
-# 校验
+pnpm run tauri dev
 pnpm run typecheck
 pnpm run build
-cd src-tauri && cargo clippy --all-targets -- -D warnings
 ```
 
-> 注意：DDC 后端按平台 `cfg` gate，`cargo check` 在 macOS 不会拉 Windows 的 `ddc-winapi`，反之亦然。Windows 路径需在 Windows 主机上验证。
+发布流程：
+
+1. 在 `dev` 完成开发后，squash 合并到 `main`。
+2. 确保 `package.json`、`src-tauri/tauri.conf.json`、`src-tauri/Cargo.toml` 的版本号一致。
+3. 为版本新增双语 release notes，例如 `docs/releases/v0.1.0.md`。
+4. 发版前检查待提交和忽略文件：
+
+```bash
+git status --short
+git status --ignored --short
+```
+
+不要提交本地 AI/Trellis 配置、构建产物、依赖目录、证书、密钥或环境变量文件。正式发布安装包只由 GitHub Actions 生成；将 `vX.Y.Z` tag 推送到 `main` 上的提交后，GitHub Actions 会构建 `Z-Monitor-Switcher.dmg` 和 Windows NSIS 安装程序 `Z-Monitor-Switcher.exe`，并创建 Release。文件名不带版本号，版本由 Release tag 表达。不要把本地构建产物上传到 Release。
+
+## 📄 许可证
+
+Apache License 2.0
+
+## 📮 反馈与支持
+
+如果遇到问题或有功能建议，欢迎在 [Issues](https://github.com/goalonez/z-monitor-switcher/issues) 中提出。

@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "z-monitor-switcher",
+  "productName": "Z Monitor Switcher",
   "version": "0.1.0",
   "identifier": "com.goalonez.monitorswitcher",
   "build": {
@@ -14,7 +14,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "z-monitor-switcher",
+        "title": "Z Monitor Switcher",
         "width": 540,
         "height": 760,
         "minWidth": 480,
