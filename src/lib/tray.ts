@@ -30,8 +30,15 @@ const PANEL_MIN_WIDTH = 200;
 const PANEL_MIN_HEIGHT = 120;
 /** Margin (physical px) kept from the screen edges when clamping. */
 const SCREEN_MARGIN = 8;
+/** Ignore a tray click that immediately follows focus-loss auto-dismissal. */
+const FOCUS_DISMISS_RECLICK_GUARD_MS = 300;
 let setupPromise: Promise<void> | null = null;
 let trayInitialized = false;
+let trayControlsFocusSetupPromise: Promise<void> | null = null;
+let trayControlsFocusUnlisten: (() => void) | null = null;
+let trayControlsDestroyedUnlisten: (() => void) | null = null;
+let lastFocusDismissedAt = 0;
+let trayClickHideInProgress = false;
 
 /** Show and focus the main window (also un-minimizes if needed). */
 export async function showMainWindow(): Promise<void> {
@@ -80,12 +87,54 @@ async function computePanelPosition(
   );
 }
 
+function resetTrayControlsFocusDismissal(): void {
+  trayControlsFocusUnlisten?.();
+  trayControlsDestroyedUnlisten?.();
+  trayControlsFocusSetupPromise = null;
+  trayControlsFocusUnlisten = null;
+  trayControlsDestroyedUnlisten = null;
+}
+
+function wasJustFocusDismissed(): boolean {
+  return Date.now() - lastFocusDismissedAt < FOCUS_DISMISS_RECLICK_GUARD_MS;
+}
+
+async function ensureTrayControlsFocusDismissal(
+  controls: WebviewWindow,
+): Promise<void> {
+  if (trayControlsFocusUnlisten) return;
+  if (trayControlsFocusSetupPromise) return trayControlsFocusSetupPromise;
+
+  trayControlsFocusSetupPromise = (async () => {
+    const focusUnlisten = await controls.onFocusChanged(
+      ({ payload: focused }) => {
+        if (focused) return;
+        if (!trayClickHideInProgress) {
+          lastFocusDismissedAt = Date.now();
+        }
+        void controls.hide().catch(() => {});
+      },
+    );
+    const destroyedUnlisten = await controls.once("tauri://destroyed", () => {
+      resetTrayControlsFocusDismissal();
+    });
+
+    trayControlsFocusUnlisten = focusUnlisten;
+    trayControlsDestroyedUnlisten = destroyedUnlisten;
+  })().finally(() => {
+    trayControlsFocusSetupPromise = null;
+  });
+
+  return trayControlsFocusSetupPromise;
+}
+
 /** Show the compact brightness / volume panel opened from the menu bar. */
 async function showTrayControls(event?: TrayIconEvent): Promise<void> {
   const existing = await WebviewWindow.getByLabel(TRAY_CONTROLS_WINDOW_LABEL);
   const position = event ? await computePanelPosition(event) : null;
 
   if (existing) {
+    await ensureTrayControlsFocusDismissal(existing).catch(() => {});
     if (position) {
       await existing.setPosition(position).catch(() => {});
     }
@@ -122,6 +171,8 @@ async function showTrayControls(event?: TrayIconEvent): Promise<void> {
     return null;
   });
 
+  await ensureTrayControlsFocusDismissal(controls).catch(() => {});
+
   // Position in physical pixels after creation so Retina scaling is honored.
   if (position) {
     await controls.setPosition(position).catch(() => {});
@@ -132,18 +183,31 @@ async function showTrayControls(event?: TrayIconEvent): Promise<void> {
 
 /**
  * Toggle the panel from a tray-icon click: if it exists and is visible, retract
- * (hide) it; otherwise show + position it. The panel no longer auto-hides on
- * blur (that raced with the re-click: the click blurred the panel → it hid →
- * the action reopened it, so "nothing happened"). A visibility-based toggle is
- * deterministic instead.
+ * (hide) it; otherwise show + position it. Focus-loss auto-dismissal records a
+ * short guard window so the same tray click that blurred the panel does not
+ * immediately reopen it.
  */
 async function toggleTrayControls(event?: TrayIconEvent): Promise<void> {
   const existing = await WebviewWindow.getByLabel(TRAY_CONTROLS_WINDOW_LABEL);
-  if (existing && (await existing.isVisible().catch(() => false))) {
-    await existing.hide().catch(() => {});
-    return;
+  if (existing) {
+    await ensureTrayControlsFocusDismissal(existing).catch(() => {});
+    if (await existing.isVisible().catch(() => false)) {
+      trayClickHideInProgress = true;
+      lastFocusDismissedAt = Date.now();
+      await existing.hide().catch(() => {});
+      trayClickHideInProgress = false;
+      return;
+    }
+    if (wasJustFocusDismissed()) {
+      return;
+    }
   }
-  await showTrayControls(event);
+
+  try {
+    await showTrayControls(event);
+  } finally {
+    trayClickHideInProgress = false;
+  }
 }
 
 /** Create the tray icon (idempotent: reuses the existing one if present). */
