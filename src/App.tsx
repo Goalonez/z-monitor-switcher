@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { useMonitors } from "@/hooks/useMonitors";
 import { useKvm } from "@/hooks/useKvm";
 import { useSettings } from "@/hooks/useSettings";
+import { useUpdater } from "@/hooks/useUpdater";
 import { useI18n } from "@/lib/i18n";
 import { openUrl, quitApp } from "@/lib/api";
 import { Github, Power, Settings as SettingsIcon } from "lucide-react";
@@ -24,6 +25,7 @@ function MainWindow() {
   const monitorsState = useMonitors();
   const kvm = useKvm();
   const settings = useSettings();
+  const updater = useUpdater();
   const { t } = useI18n();
   const [settingsOpen, setSettingsOpen] = useState(false);
 
@@ -57,11 +59,15 @@ function MainWindow() {
           <Button
             variant="ghost"
             size="icon"
+            className="relative"
             onClick={() => setSettingsOpen(true)}
             aria-label={t("settings")}
             title={t("settings")}
           >
             <SettingsIcon className="h-4 w-4" />
+            {updater.hasUpdate && (
+              <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-destructive" />
+            )}
           </Button>
           <Button
             variant="ghost"
@@ -87,6 +93,7 @@ function MainWindow() {
       <Settings
         open={settingsOpen}
         settings={settings}
+        updater={updater}
         onOpenChange={setSettingsOpen}
       />
       <PostActionDialog

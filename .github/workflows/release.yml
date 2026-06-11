@@ -79,9 +79,15 @@ jobs:
           const errors = [];
 
           const packageVersion = JSON.parse(fs.readFileSync("package.json", "utf8")).version;
-          const tauriVersion = JSON.parse(fs.readFileSync("src-tauri/tauri.conf.json", "utf8")).version;
+          const tauriConf = JSON.parse(fs.readFileSync("src-tauri/tauri.conf.json", "utf8"));
+          const tauriVersion = tauriConf.version;
           const cargoToml = fs.readFileSync("src-tauri/Cargo.toml", "utf8");
           const cargoVersion = cargoToml.match(/^\[package\][\s\S]*?^version\s*=\s*"([^"]+)"/m)?.[1];
+
+          const updaterPubkey = tauriConf.plugins?.updater?.pubkey;
+          if (!updaterPubkey || updaterPubkey.includes("REPLACE_WITH")) {
+            errors.push("plugins.updater.pubkey in src-tauri/tauri.conf.json is missing or still a placeholder");
+          }
 
           for (const [file, fileVersion] of [
             ["package.json", packageVersion],
@@ -143,9 +149,12 @@ jobs:
 
       - name: Build DMG
         shell: bash
-        run: pnpm tauri build --bundles dmg --ci --no-sign
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: pnpm tauri build --bundles dmg --ci
 
-      - name: Collect DMG
+      - name: Collect DMG and updater artifact
         shell: bash
         run: |
           set -euo pipefail
@@ -161,11 +170,26 @@ jobs:
           dmg="$(find src-tauri/target -path "*/release/bundle/dmg/*.dmg" -type f -print -quit)"
           cp "${dmg}" "release-assets/Z-Monitor-Switcher.dmg"
 
+          tar_count="$(find src-tauri/target -path "*/release/bundle/macos/*.app.tar.gz" -type f | wc -l | tr -d " ")"
+          if [[ "${tar_count}" != "1" ]]; then
+            echo "Expected exactly one updater .app.tar.gz, found ${tar_count}" >&2
+            find src-tauri/target -path "*/release/bundle/macos/*.app.tar.gz*" -type f >&2
+            exit 1
+          fi
+
+          tarball="$(find src-tauri/target -path "*/release/bundle/macos/*.app.tar.gz" -type f -print -quit)"
+          test -f "${tarball}.sig" || { echo "Missing updater signature ${tarball}.sig" >&2; exit 1; }
+          cp "${tarball}" "release-assets/Z-Monitor-Switcher-aarch64.app.tar.gz"
+          cp "${tarball}.sig" "release-assets/Z-Monitor-Switcher-aarch64.app.tar.gz.sig"
+
       - name: Upload DMG artifact
         uses: actions/upload-artifact@v4
         with:
           name: macos-dmg
-          path: release-assets/*.dmg
+          path: |
+            release-assets/*.dmg
+            release-assets/*.app.tar.gz
+            release-assets/*.app.tar.gz.sig
           if-no-files-found: error
 
   build-windows:
@@ -201,6 +225,9 @@ jobs:
 
       - name: Build NSIS installer
         shell: pwsh
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: pnpm tauri build --bundles nsis --ci
 
       - name: Collect NSIS installer
@@ -217,13 +244,21 @@ jobs:
             Write-Error "Expected exactly one NSIS installer, found $($installers.Count): $($installers.FullName -join ', ')"
           }
 
+          $sig = "$($installers[0].FullName).sig"
+          if (-not (Test-Path $sig)) {
+            Write-Error "Missing updater signature: $sig"
+          }
+
           Copy-Item $installers[0].FullName "release-assets/Z-Monitor-Switcher.exe"
+          Copy-Item $sig "release-assets/Z-Monitor-Switcher.exe.sig"
 
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
         with:
           name: windows-nsis
-          path: release-assets/*.exe
+          path: |
+            release-assets/*.exe
+            release-assets/*.exe.sig
           if-no-files-found: error
 
   publish:
@@ -236,6 +271,7 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       TAG: ${{ needs.validate.outputs.tag }}
+      VERSION: ${{ needs.validate.outputs.version }}
       NOTES_FILE: ${{ needs.validate.outputs.notes_file }}
     steps:
       - name: Checkout
@@ -254,11 +290,43 @@ jobs:
 
           test -f "release-assets/Z-Monitor-Switcher.dmg"
           test -f "release-assets/Z-Monitor-Switcher.exe"
+          test -f "release-assets/Z-Monitor-Switcher.exe.sig"
+          test -f "release-assets/Z-Monitor-Switcher-aarch64.app.tar.gz"
+          test -f "release-assets/Z-Monitor-Switcher-aarch64.app.tar.gz.sig"
 
           if find release-assets -type f -name "*.msi" | grep -q .; then
             echo "MSI assets are not published for this project." >&2
             exit 1
           fi
+
+      - name: Generate updater manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          BASE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}"
+
+          jq -n \
+            --arg version "${VERSION}" \
+            --arg pub_date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg mac_sig "$(cat "release-assets/Z-Monitor-Switcher-aarch64.app.tar.gz.sig")" \
+            --arg mac_url "${BASE_URL}/Z-Monitor-Switcher-aarch64.app.tar.gz" \
+            --arg win_sig "$(cat "release-assets/Z-Monitor-Switcher.exe.sig")" \
+            --arg win_url "${BASE_URL}/Z-Monitor-Switcher.exe" \
+            '{
+              version: $version,
+              pub_date: $pub_date,
+              platforms: {
+                "darwin-aarch64": { signature: $mac_sig, url: $mac_url },
+                "windows-x86_64": { signature: $win_sig, url: $win_url }
+              }
+            }' > release-assets/latest.json
+
+          # Signatures are embedded in latest.json; standalone .sig files are
+          # not published as release assets.
+          rm release-assets/*.sig
+
+          cat release-assets/latest.json
 
       - name: Publish release
         shell: bash
