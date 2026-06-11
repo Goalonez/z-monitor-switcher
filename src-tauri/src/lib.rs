@@ -25,11 +25,10 @@ fn set_input(monitor_id: String, value: u16) -> Result<(), MonitorError> {
 
 /// Switch every DDC-capable display to the same input `value` ("apply to all").
 ///
-/// Used by the tray "apply to all" item and global hotkeys, where the caller has
-/// a single input code that should hit every controllable monitor. Because input
-/// codes are monitor-specific, the per-monitor quick-switch path (which uses each
-/// display's configured value) is preferred in the UI; this is the broad-stroke
-/// fallback. It is best-effort: it attempts every supported monitor and returns
+/// Retained as a broad-stroke fallback for callers that intentionally have one
+/// input code to send to every controllable monitor. Because input codes are
+/// monitor-specific, the current UI uses per-monitor quick-switches instead.
+/// This command is best-effort: it attempts every supported monitor and returns
 /// the last write error only if EVERY attempt failed, so one stubborn display
 /// does not block the rest.
 #[tauri::command]

@@ -37,7 +37,7 @@ const PANEL_MIN_HEIGHT = 120;
 /** Margin (physical px) kept from the screen edges when clamping. */
 const SCREEN_MARGIN = 8;
 /** Gap (physical px) between the tray icon and popup panel. */
-const PANEL_GAP = 4;
+const PANEL_GAP = 12;
 /** Ignore a tray click that immediately follows focus-loss auto-dismissal. */
 const FOCUS_DISMISS_RECLICK_GUARD_MS = 300;
 let setupPromise: Promise<void> | null = null;
@@ -69,6 +69,7 @@ export async function showMainWindow(): Promise<void> {
  */
 async function computePanelPosition(
   event: TrayIconEvent,
+  panelSize?: { width: number; height: number },
 ): Promise<PhysicalPosition | null> {
   const iconCenterX = event.rect.position.x + event.rect.size.width / 2;
   const iconCenterY = event.rect.position.y + event.rect.size.height / 2;
@@ -78,8 +79,8 @@ async function computePanelPosition(
   if (!monitor) return null;
 
   const scale = monitor.scaleFactor;
-  const panelW = PANEL_LOGICAL_WIDTH * scale;
-  const panelH = PANEL_LOGICAL_HEIGHT * scale;
+  const panelW = panelSize?.width ?? PANEL_LOGICAL_WIDTH * scale;
+  const panelH = panelSize?.height ?? PANEL_LOGICAL_HEIGHT * scale;
   const desiredX = iconCenterX - panelW / 2;
   const bounds = monitor.workArea ?? {
     position: monitor.position,
@@ -103,6 +104,28 @@ async function computePanelPosition(
     clamp(desiredX, minX, maxX),
     clamp(desiredY, minY, maxY),
   );
+}
+
+async function positionTrayControls(
+  controls: WebviewWindow,
+  event: TrayIconEvent,
+): Promise<void> {
+  const size = await controls.outerSize().catch(() => null);
+  const position = await computePanelPosition(event, size ?? undefined);
+  if (position) {
+    await controls.setPosition(position).catch(() => {});
+  }
+}
+
+function scheduleTrayControlsReposition(
+  controls: WebviewWindow,
+  event: TrayIconEvent,
+): void {
+  const reposition = () => {
+    void positionTrayControls(controls, event).catch(() => {});
+  };
+  window.setTimeout(reposition, 80);
+  window.setTimeout(reposition, 220);
 }
 
 function resetTrayControlsFocusDismissal(): void {
@@ -149,15 +172,17 @@ async function ensureTrayControlsFocusDismissal(
 /** Show the compact brightness / volume panel opened from the menu bar. */
 async function showTrayControls(event?: TrayIconEvent): Promise<void> {
   const existing = await WebviewWindow.getByLabel(TRAY_CONTROLS_WINDOW_LABEL);
-  const position = event ? await computePanelPosition(event) : null;
 
   if (existing) {
     await ensureTrayControlsFocusDismissal(existing).catch(() => {});
-    if (position) {
-      await existing.setPosition(position).catch(() => {});
+    if (event) {
+      await positionTrayControls(existing, event).catch(() => {});
     }
     await existing.show();
     await existing.setFocus();
+    if (event) {
+      scheduleTrayControlsReposition(existing, event);
+    }
     return;
   }
 
@@ -192,10 +217,11 @@ async function showTrayControls(event?: TrayIconEvent): Promise<void> {
   await ensureTrayControlsFocusDismissal(controls).catch(() => {});
 
   // Position in physical pixels after creation so Retina scaling is honored.
-  if (position) {
-    await controls.setPosition(position).catch(() => {});
+  if (event) {
+    await positionTrayControls(controls, event).catch(() => {});
     await controls.show().catch(() => {});
     await controls.setFocus().catch(() => {});
+    scheduleTrayControlsReposition(controls, event);
   }
 }
 
