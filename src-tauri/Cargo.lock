@@ -5626,7 +5626,7 @@ dependencies = [
 
 [[package]]
 name = "z-monitor-switcher"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "core-graphics 0.24.0",
  "ddc",

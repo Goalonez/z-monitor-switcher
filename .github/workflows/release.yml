@@ -12,9 +12,6 @@ concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 jobs:
   validate:
     name: Validate release inputs
@@ -124,7 +121,7 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 10.32.1
 
@@ -218,7 +215,7 @@ jobs:
           cp "${tarball}.sig" "release-assets/Z-Monitor-Switcher-aarch64.app.tar.gz.sig"
 
       - name: Upload DMG artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: macos-dmg
           path: |
@@ -229,14 +226,14 @@ jobs:
 
   build-windows:
     name: Build Windows NSIS installer
-    runs-on: windows-latest
+    runs-on: windows-2022
     needs: validate
     steps:
       - name: Checkout
         uses: actions/checkout@v5
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 10.32.1
 
@@ -325,7 +322,7 @@ jobs:
           Copy-Item $sig "release-assets/Z-Monitor-Switcher.exe.sig"
 
       - name: Upload Windows artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: windows-nsis
           path: |
@@ -350,7 +347,7 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Download release artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: release-assets
           merge-multiple: true
