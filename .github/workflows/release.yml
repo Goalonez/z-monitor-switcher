@@ -126,11 +126,11 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: 24
-          corepack: true
 
-      - name: Enable pnpm
-        shell: bash
-        run: corepack enable
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.32.1
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
