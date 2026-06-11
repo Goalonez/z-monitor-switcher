@@ -150,12 +150,44 @@ jobs:
         shell: bash
         run: pnpm install --frozen-lockfile
 
-      - name: Build DMG
+      - name: Validate updater signing key
         shell: bash
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: pnpm tauri build --bundles dmg --ci
+          SIGNING_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ]]; then
+            echo "TAURI_SIGNING_PRIVATE_KEY secret is required to create updater artifacts." >&2
+            exit 1
+          fi
+
+          probe="$(mktemp)"
+          printf "updater signing preflight" > "${probe}"
+
+          if TAURI_SIGNING_PRIVATE_KEY_PASSWORD="${SIGNING_PASSWORD:-}" pnpm tauri signer sign "${probe}" >/dev/null 2>&1; then
+            effective_password="${SIGNING_PASSWORD:-}"
+          elif pnpm tauri signer sign "${probe}" >/dev/null 2>&1; then
+            effective_password=""
+            echo "TAURI_SIGNING_PRIVATE_KEY_PASSWORD did not match; continuing with an unencrypted updater key." >&2
+          else
+            echo "Unable to decode TAURI_SIGNING_PRIVATE_KEY. Update the TAURI_SIGNING_PRIVATE_KEY_PASSWORD repository secret, or clear it if the key is unencrypted." >&2
+            exit 1
+          fi
+
+          {
+            echo "TAURI_SIGNING_PRIVATE_KEY<<__TAURI_KEY__"
+            echo "${TAURI_SIGNING_PRIVATE_KEY}"
+            echo "__TAURI_KEY__"
+            echo "TAURI_SIGNING_PRIVATE_KEY_PASSWORD<<__TAURI_PASSWORD__"
+            echo "${effective_password}"
+            echo "__TAURI_PASSWORD__"
+          } >> "${GITHUB_ENV}"
+
+      - name: Build DMG
+        shell: bash
+        run: pnpm tauri build --bundles app,dmg --ci
 
       - name: Collect DMG and updater artifact
         shell: bash
@@ -228,11 +260,46 @@ jobs:
         shell: pwsh
         run: pnpm install --frozen-lockfile
 
-      - name: Build NSIS installer
+      - name: Validate updater signing key
         shell: pwsh
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          SIGNING_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $false
+
+          if ([string]::IsNullOrWhiteSpace($env:TAURI_SIGNING_PRIVATE_KEY)) {
+            throw "TAURI_SIGNING_PRIVATE_KEY secret is required to create updater artifacts."
+          }
+
+          $probe = New-TemporaryFile
+          Set-Content -Path $probe -Value "updater signing preflight" -NoNewline
+
+          $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = $env:SIGNING_PASSWORD
+          pnpm tauri signer sign $probe *> $null
+          if ($LASTEXITCODE -eq 0) {
+            $effectivePassword = $env:SIGNING_PASSWORD
+          } else {
+            Remove-Item Env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD -ErrorAction SilentlyContinue
+            pnpm tauri signer sign $probe *> $null
+            if ($LASTEXITCODE -eq 0) {
+              $effectivePassword = ""
+              Write-Warning "TAURI_SIGNING_PRIVATE_KEY_PASSWORD did not match; continuing with an unencrypted updater key."
+            } else {
+              throw "Unable to decode TAURI_SIGNING_PRIVATE_KEY. Update the TAURI_SIGNING_PRIVATE_KEY_PASSWORD repository secret, or clear it if the key is unencrypted."
+            }
+          }
+
+          Add-Content -Path $env:GITHUB_ENV -Value "TAURI_SIGNING_PRIVATE_KEY<<__TAURI_KEY__"
+          Add-Content -Path $env:GITHUB_ENV -Value $env:TAURI_SIGNING_PRIVATE_KEY
+          Add-Content -Path $env:GITHUB_ENV -Value "__TAURI_KEY__"
+          Add-Content -Path $env:GITHUB_ENV -Value "TAURI_SIGNING_PRIVATE_KEY_PASSWORD<<__TAURI_PASSWORD__"
+          Add-Content -Path $env:GITHUB_ENV -Value $effectivePassword
+          Add-Content -Path $env:GITHUB_ENV -Value "__TAURI_PASSWORD__"
+
+      - name: Build NSIS installer
+        shell: pwsh
         run: pnpm tauri build --bundles nsis --ci
 
       - name: Collect NSIS installer

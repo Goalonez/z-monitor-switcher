@@ -17,6 +17,7 @@
 //! The event name is shared with the frontend (`src/lib/events.ts`).
 
 /// Tauri event emitted when the display topology changes.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub const MONITORS_CHANGED_EVENT: &str = "monitors-changed";
 
 #[cfg(target_os = "macos")]

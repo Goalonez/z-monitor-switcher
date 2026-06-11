@@ -1,5 +1,6 @@
 {
   "bundle": {
-    "targets": ["dmg"]
+    "targets": ["app", "dmg"],
+    "createUpdaterArtifacts": true
   }
 }
