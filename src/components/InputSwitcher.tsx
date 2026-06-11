@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { MonitorInfo } from "@/lib/types";
 import { useMonitorInput } from "@/hooks/useMonitorInput";
 import { DEFAULT_PRESET_ID } from "@/lib/presets";
@@ -6,6 +6,7 @@ import {
   acceleratorFromEvent,
   displayAccelerator,
 } from "@/lib/accelerators";
+import { applyConfiguredHotkeys, clearHotkeys } from "@/lib/hotkeys";
 import { Button } from "@/components/ui/button";
 import { useI18n } from "@/lib/i18n";
 import {
@@ -53,16 +54,37 @@ export function InputSwitcher({
   } = useMonitorInput(monitor, onSwitched);
   const { t } = useI18n();
   const [recordingIndex, setRecordingIndex] = useState<number | null>(null);
+  const [recordingHotkeyError, setRecordingHotkeyError] = useState<
+    string | null
+  >(null);
   const recordButtonRef = useRef<HTMLButtonElement>(null);
+  const hotkeySuspendPromiseRef = useRef<Promise<void>>(Promise.resolve());
   const enabledSources = config.sources.filter((source) => source.enabled);
+  const visibleConfigError = configError ?? recordingHotkeyError;
+
+  const restoreConfiguredHotkeys = useCallback(() => {
+    void hotkeySuspendPromiseRef.current
+      .then(() => applyConfiguredHotkeys())
+      .then((hotkeyError) => setRecordingHotkeyError(hotkeyError))
+      .catch((err: unknown) => {
+        setRecordingHotkeyError(
+          err instanceof Error ? err.message : String(err),
+        );
+      });
+  }, []);
 
   useEffect(() => {
     if (recordingIndex === null) return;
+    setRecordingHotkeyError(null);
+    hotkeySuspendPromiseRef.current = clearHotkeys().catch((err: unknown) => {
+      setRecordingHotkeyError(err instanceof Error ? err.message : String(err));
+    });
 
     const handleKeyDown = (event: KeyboardEvent) => {
       event.preventDefault();
       event.stopPropagation();
       if (event.key === "Escape") {
+        restoreConfiguredHotkeys();
         setRecordingIndex(null);
         return;
       }
@@ -82,6 +104,7 @@ export function InputSwitcher({
     const handlePointerDown = (event: MouseEvent) => {
       const button = recordButtonRef.current;
       if (button && button.contains(event.target as Node)) return;
+      restoreConfiguredHotkeys();
       setRecordingIndex(null);
     };
 
@@ -91,11 +114,14 @@ export function InputSwitcher({
       window.removeEventListener("keydown", handleKeyDown, true);
       document.removeEventListener("mousedown", handlePointerDown, true);
     };
-  }, [recordingIndex, updateSource]);
+  }, [recordingIndex, restoreConfiguredHotkeys, updateSource]);
 
   useEffect(() => {
-    if (!manageOpen) setRecordingIndex(null);
-  }, [manageOpen]);
+    if (!manageOpen && recordingIndex !== null) {
+      restoreConfiguredHotkeys();
+      setRecordingIndex(null);
+    }
+  }, [manageOpen, recordingIndex, restoreConfiguredHotkeys]);
 
   return (
     <div className="space-y-3 border-t pt-3">
@@ -210,11 +236,14 @@ export function InputSwitcher({
                     variant={recordingIndex === index ? "secondary" : "outline"}
                     size="sm"
                     className="min-w-0 px-2"
-                    onClick={() =>
-                      setRecordingIndex((current) =>
-                        current === index ? null : index,
-                      )
-                    }
+                    onClick={() => {
+                      if (recordingIndex === index) {
+                        restoreConfiguredHotkeys();
+                        setRecordingIndex(null);
+                        return;
+                      }
+                      setRecordingIndex(index);
+                    }}
                     title={t("setShortcut")}
                   >
                     <Keyboard className="h-3.5 w-3.5 shrink-0" />
@@ -268,10 +297,10 @@ export function InputSwitcher({
                   {t("done")}
                 </Button>
               </div>
-              {configError && (
+              {visibleConfigError && (
                 <p className="text-sm text-destructive">
                   {t("shortcutFailed")}
-                  {configError}
+                  {visibleConfigError}
                 </p>
               )}
             </div>

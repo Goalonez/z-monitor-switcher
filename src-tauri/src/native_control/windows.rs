@@ -5,11 +5,14 @@
 //! CoreAudio COM bridge. This keeps the MVP dependency-free and target-gated;
 //! a future task can replace the scripts with direct `windows` / `wmi` crates.
 
+use std::os::windows::process::CommandExt;
 use std::process::Command;
 
 use crate::monitor::MonitorError;
 
 use super::{clamp_percent, NativeControlCapabilities, NativeControlFeature};
+
+const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 pub fn probe() -> Result<NativeControlCapabilities, MonitorError> {
     let native_brightness = match get_native_brightness() {
@@ -83,6 +86,7 @@ fn run_powershell(script: &str) -> Result<String, String> {
             "-Command",
             script,
         ])
+        .creation_flags(CREATE_NO_WINDOW)
         .output()
         .map_err(|e| format!("failed to run powershell.exe: {e}"))?;
 

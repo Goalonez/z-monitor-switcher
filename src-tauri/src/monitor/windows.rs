@@ -13,6 +13,7 @@
 
 use ddc::Ddc;
 use ddc_winapi::Monitor;
+use std::time::Duration;
 
 use super::{
     vcp, write_retry, FeatureCapability, MonitorCapabilities, MonitorControl, MonitorError,
@@ -60,7 +61,7 @@ impl MonitorControl for WindowsMonitors {
 
     fn set_input(&self, monitor_id: &str, value: u16) -> Result<(), MonitorError> {
         let (mut monitors, index) = find_monitor(monitor_id)?;
-        write_vcp_with_retry(&mut monitors[index], vcp::INPUT_SOURCE, value)
+        write_input_vcp_with_retry(&mut monitors[index], value)
     }
 
     fn set_brightness(&self, monitor_id: &str, value: u16) -> Result<(), MonitorError> {
@@ -82,6 +83,9 @@ impl MonitorControl for WindowsMonitors {
         })
     }
 }
+
+const INPUT_WRITE_ATTEMPTS: u32 = 5;
+const INPUT_WRITE_DELAY: Duration = Duration::from_millis(80);
 
 /// Re-enumerate and resolve the per-session id (enumeration index) to a
 /// `(monitors, index)` pair. dxva2 physical-monitor handles are not stable, so
@@ -137,4 +141,31 @@ fn write_vcp_with_retry(monitor: &mut Monitor, code: u8, value: u16) -> Result<(
     Err(MonitorError::Ddc(
         last_err.unwrap_or_else(|| "write failed".to_string()),
     ))
+}
+
+/// Input switching can disconnect the current computer from the monitor. Some
+/// Windows/DDC stacks report the first 0x60 write as OK even when the display
+/// ignores it, so keep sending the same write a few times and succeed if any
+/// attempt was accepted. We still never read 0x60 back.
+fn write_input_vcp_with_retry(monitor: &mut Monitor, value: u16) -> Result<(), MonitorError> {
+    let mut any_ok = false;
+    let mut last_err: Option<String> = None;
+
+    for attempt in 0..INPUT_WRITE_ATTEMPTS {
+        match monitor.set_vcp_feature(vcp::INPUT_SOURCE, value) {
+            Ok(()) => any_ok = true,
+            Err(e) => last_err = Some(e.to_string()),
+        }
+        if attempt + 1 < INPUT_WRITE_ATTEMPTS {
+            std::thread::sleep(INPUT_WRITE_DELAY);
+        }
+    }
+
+    if any_ok {
+        Ok(())
+    } else {
+        Err(MonitorError::Ddc(
+            last_err.unwrap_or_else(|| "input write failed".to_string()),
+        ))
+    }
 }

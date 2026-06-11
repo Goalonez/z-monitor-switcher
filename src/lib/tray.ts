@@ -1,10 +1,16 @@
 import { TrayIcon } from "@tauri-apps/api/tray";
 import { defaultWindowIcon } from "@tauri-apps/api/app";
 import { Image } from "@tauri-apps/api/image";
-import { PhysicalPosition, Window, currentMonitor } from "@tauri-apps/api/window";
+import {
+  PhysicalPosition,
+  Window,
+  currentMonitor,
+  monitorFromPoint,
+} from "@tauri-apps/api/window";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import type { TrayIconEvent } from "@tauri-apps/api/tray";
 import menubarIconUrl from "@/assets/menubar_logo.png";
+import { getOs } from "@/lib/api";
 
 /**
  * System-tray / menu-bar integration.
@@ -30,6 +36,8 @@ const PANEL_MIN_WIDTH = 200;
 const PANEL_MIN_HEIGHT = 120;
 /** Margin (physical px) kept from the screen edges when clamping. */
 const SCREEN_MARGIN = 8;
+/** Gap (physical px) between the tray icon and popup panel. */
+const PANEL_GAP = 4;
 /** Ignore a tray click that immediately follows focus-loss auto-dismissal. */
 const FOCUS_DISMISS_RECLICK_GUARD_MS = 300;
 let setupPromise: Promise<void> | null = null;
@@ -50,33 +58,43 @@ export async function showMainWindow(): Promise<void> {
 }
 
 /**
- * Compute the panel's top-left position in PHYSICAL pixels, just below the tray
- * icon, clamped to the current monitor's visible bounds so it never lands
- * off-screen on Retina / multi-display setups.
+ * Compute the panel's top-left position in PHYSICAL pixels, next to the tray
+ * icon, clamped to the tray monitor's work area so it never overlaps the
+ * Windows taskbar or lands off-screen on Retina / multi-display setups.
  *
  * The TrayIconEvent rect (`position` / `size`) is in physical pixels per the
- * Tauri JS API, and `currentMonitor()` returns physical `position` / `size`
- * plus a `scaleFactor`. Positioning with logical coordinates on a 2x display
- * would double the offset and push the window off-screen (the original bug).
+ * Tauri JS API, and monitor bounds are physical pixels plus a `scaleFactor`.
+ * Positioning with logical coordinates on a 2x display would double the offset
+ * and push the window off-screen (the original bug).
  */
 async function computePanelPosition(
   event: TrayIconEvent,
 ): Promise<PhysicalPosition | null> {
-  const monitor = await currentMonitor().catch(() => null);
+  const iconCenterX = event.rect.position.x + event.rect.size.width / 2;
+  const iconCenterY = event.rect.position.y + event.rect.size.height / 2;
+  const monitor =
+    (await monitorFromPoint(iconCenterX, iconCenterY).catch(() => null)) ??
+    (await currentMonitor().catch(() => null));
   if (!monitor) return null;
 
   const scale = monitor.scaleFactor;
   const panelW = PANEL_LOGICAL_WIDTH * scale;
   const panelH = PANEL_LOGICAL_HEIGHT * scale;
-
-  const iconCenterX = event.rect.position.x + event.rect.size.width / 2;
   const desiredX = iconCenterX - panelW / 2;
-  const desiredY = event.rect.position.y + event.rect.size.height + 4;
+  const bounds = monitor.workArea ?? {
+    position: monitor.position,
+    size: monitor.size,
+  };
+  const opensUp =
+    iconCenterY > bounds.position.y + bounds.size.height / 2;
+  const desiredY = opensUp
+    ? event.rect.position.y - panelH - PANEL_GAP
+    : event.rect.position.y + event.rect.size.height + PANEL_GAP;
 
-  const minX = monitor.position.x + SCREEN_MARGIN;
-  const maxX = monitor.position.x + monitor.size.width - panelW - SCREEN_MARGIN;
-  const minY = monitor.position.y + SCREEN_MARGIN;
-  const maxY = monitor.position.y + monitor.size.height - panelH - SCREEN_MARGIN;
+  const minX = bounds.position.x + SCREEN_MARGIN;
+  const maxX = bounds.position.x + bounds.size.width - panelW - SCREEN_MARGIN;
+  const minY = bounds.position.y + SCREEN_MARGIN;
+  const maxY = bounds.position.y + bounds.size.height - panelH - SCREEN_MARGIN;
 
   const clamp = (value: number, min: number, max: number) =>
     Math.round(Math.min(Math.max(value, min), Math.max(min, max)));
@@ -223,28 +241,31 @@ export async function setupTray(): Promise<void> {
     const existing = await TrayIcon.getById(TRAY_ID);
     if (existing) return;
 
-    // Load the bundled menu-bar logo and decode it to a Tauri Image (the
-    // `image-png` feature is enabled in Cargo.toml). Used in macOS "template"
-    // mode below so the OS renders it as an adaptive monochrome glyph from the
-    // alpha channel. If the fetch/decode fails for any reason, fall back to the
-    // default window icon so the tray still appears.
+    // macOS uses the bundled menu-bar logo as a template image so the OS
+    // renders an adaptive monochrome glyph. Windows uses the packaged app icon:
+    // scaling the macOS template asset in the tray can leave dark edge artifacts.
+    const os = await getOs().catch(() => "unknown");
+    const useTemplateIcon = os === "macos";
     let icon: Image | null;
     try {
-      const bytes = new Uint8Array(
-        await (await fetch(menubarIconUrl)).arrayBuffer(),
-      );
-      icon = await Image.fromBytes(bytes);
+      if (useTemplateIcon) {
+        const bytes = new Uint8Array(
+          await (await fetch(menubarIconUrl)).arrayBuffer(),
+        );
+        icon = await Image.fromBytes(bytes);
+      } else {
+        icon = await defaultWindowIcon();
+      }
     } catch (err) {
-      console.error("menu-bar icon decode failed, using default", err);
+      console.error("tray icon decode failed, using default", err);
       icon = await defaultWindowIcon();
     }
     await TrayIcon.new({
       id: TRAY_ID,
       icon: icon ?? undefined,
-      // Render the logo as a macOS monochrome "template" so it auto-adapts to
-      // light/dark menu bars like other menu-bar apps. macOS-only option,
-      // ignored on Windows / Linux (the same PNG is used there in color).
-      iconAsTemplate: true,
+      // Render only the macOS logo as a monochrome "template" so it auto-adapts
+      // to light/dark menu bars like other menu-bar apps.
+      iconAsTemplate: useTemplateIcon,
       tooltip: "Z Monitor Switcher",
       // No native menu is attached; make left-click delivery unambiguous on
       // macOS (a menu would make the OS swallow the click `action` event).
