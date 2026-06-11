@@ -104,6 +104,10 @@ async function showTrayControls(event?: TrayIconEvent): Promise<void> {
     resizable: false,
     decorations: false,
     transparent: true,
+<<<<<<< HEAD
+=======
+    shadow: false,
+>>>>>>> dev
     alwaysOnTop: true,
     skipTaskbar: true,
     visibleOnAllWorkspaces: true,

@@ -1,4 +1,8 @@
 import type { UseSettingsResult } from "@/hooks/useSettings";
+<<<<<<< HEAD
+=======
+import type { UseUpdaterResult } from "@/hooks/useUpdater";
+>>>>>>> dev
 import { useI18n, type Language } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Loader2, X } from "lucide-react";
@@ -6,10 +10,18 @@ import { Loader2, X } from "lucide-react";
 interface SettingsProps {
   open: boolean;
   settings: UseSettingsResult;
+<<<<<<< HEAD
   onOpenChange: (open: boolean) => void;
 }
 
 export function Settings({ open, settings, onOpenChange }: SettingsProps) {
+=======
+  updater: UseUpdaterResult;
+  onOpenChange: (open: boolean) => void;
+}
+
+export function Settings({ open, settings, updater, onOpenChange }: SettingsProps) {
+>>>>>>> dev
   const { language, setLanguage, t } = useI18n();
 
   if (!open) return null;
@@ -131,6 +143,78 @@ export function Settings({ open, settings, onOpenChange }: SettingsProps) {
               ))}
             </div>
           </div>
+<<<<<<< HEAD
+=======
+
+          <div className="space-y-2 border-t pt-4">
+            <div className="flex items-center justify-between gap-3">
+              <label className="font-medium">{t("currentVersion")}</label>
+              <span className="text-muted-foreground">
+                {updater.currentVersion ? `v${updater.currentVersion}` : "—"}
+              </span>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <span
+                className={`min-w-0 truncate text-xs ${
+                  updater.status === "error"
+                    ? "text-destructive"
+                    : updater.status === "available"
+                      ? "font-medium text-primary"
+                      : "text-muted-foreground"
+                }`}
+                title={updater.status === "error" ? (updater.error ?? "") : undefined}
+              >
+                {updater.status === "upToDate" && t("upToDate")}
+                {updater.status === "available" &&
+                  `${t("newVersionFound")} v${updater.latestVersion}`}
+                {updater.status === "downloading" &&
+                  `${t("downloadingUpdate")}${
+                    updater.progress !== null ? ` ${updater.progress}%` : ""
+                  }`}
+                {updater.status === "readyToRestart" && t("restartToUpdate")}
+                {updater.status === "error" &&
+                  `${t("updateFailed")}${updater.error ?? ""}`}
+              </span>
+              {updater.status === "available" ? (
+                <Button
+                  size="sm"
+                  className="shrink-0"
+                  onClick={() => void updater.downloadAndInstall()}
+                >
+                  {t("downloadAndInstall")}
+                </Button>
+              ) : updater.status === "readyToRestart" ? (
+                <Button
+                  size="sm"
+                  className="shrink-0"
+                  onClick={() => void updater.restart()}
+                >
+                  {t("restartNow")}
+                </Button>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="shrink-0"
+                  disabled={
+                    updater.status === "checking" ||
+                    updater.status === "downloading"
+                  }
+                  onClick={() => void updater.checkForUpdate()}
+                >
+                  {updater.status === "checking" ? (
+                    <>
+                      <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                      {t("checkingUpdate")}
+                    </>
+                  ) : (
+                    t("checkUpdate")
+                  )}
+                </Button>
+              )}
+            </div>
+          </div>
+>>>>>>> dev
         </div>
       </div>
     </div>

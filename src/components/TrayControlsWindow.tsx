@@ -89,7 +89,11 @@ export function TrayControlsWindow() {
 
   return (
     <main ref={rootRef} className="box-border w-[320px] overflow-hidden p-2">
+<<<<<<< HEAD
       <div className="space-y-3 rounded-xl border bg-background p-3 shadow-xl">
+=======
+      <div className="space-y-3 rounded-xl border bg-background p-3 shadow-lg">
+>>>>>>> dev
         {displayMonitors.length > 1 && (
           <div className="flex items-center gap-2">
             <Select

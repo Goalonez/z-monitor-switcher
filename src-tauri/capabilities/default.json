@@ -28,6 +28,12 @@
     "global-shortcut:allow-is-registered",
     "autostart:allow-enable",
     "autostart:allow-disable",
+<<<<<<< HEAD
     "autostart:allow-is-enabled"
+=======
+    "autostart:allow-is-enabled",
+    "updater:default",
+    "process:allow-restart"
+>>>>>>> dev
   ]
 }

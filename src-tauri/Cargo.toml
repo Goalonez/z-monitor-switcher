@@ -32,6 +32,8 @@ thiserror = "2"
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-autostart = "2"
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
 
 # --- Platform-gated DDC/CI backends ---
 # These crates only compile on their respective targets, so they are gated

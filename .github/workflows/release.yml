@@ -25,12 +25,12 @@ jobs:
       notes_file: ${{ steps.meta.outputs.notes_file }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 24
 
@@ -79,10 +79,6 @@ jobs:
           const errors = [];
 
           const packageVersion = JSON.parse(fs.readFileSync("package.json", "utf8")).version;
-          const tauriVersion = JSON.parse(fs.readFileSync("src-tauri/tauri.conf.json", "utf8")).version;
-          const cargoToml = fs.readFileSync("src-tauri/Cargo.toml", "utf8");
-          const cargoVersion = cargoToml.match(/^\[package\][\s\S]*?^version\s*=\s*"([^"]+)"/m)?.[1];
-
           for (const [file, fileVersion] of [
             ["package.json", packageVersion],
             ["src-tauri/tauri.conf.json", tauriVersion],
@@ -114,10 +110,10 @@ jobs:
     needs: validate
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 24
 
@@ -143,9 +139,6 @@ jobs:
 
       - name: Build DMG
         shell: bash
-        run: pnpm tauri build --bundles dmg --ci --no-sign
-
-      - name: Collect DMG
         shell: bash
         run: |
           set -euo pipefail
@@ -165,7 +158,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: macos-dmg
-          path: release-assets/*.dmg
           if-no-files-found: error
 
   build-windows:
@@ -174,10 +166,10 @@ jobs:
     needs: validate
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 24
 
@@ -217,13 +209,11 @@ jobs:
             Write-Error "Expected exactly one NSIS installer, found $($installers.Count): $($installers.FullName -join ', ')"
           }
 
-          Copy-Item $installers[0].FullName "release-assets/Z-Monitor-Switcher.exe"
 
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
         with:
           name: windows-nsis
-          path: release-assets/*.exe
           if-no-files-found: error
 
   publish:
@@ -239,7 +229,7 @@ jobs:
       NOTES_FILE: ${{ needs.validate.outputs.notes_file }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Download release artifacts
         uses: actions/download-artifact@v4
