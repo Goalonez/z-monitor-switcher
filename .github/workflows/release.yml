@@ -126,6 +126,7 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: 24
+          corepack: true
 
       - name: Enable pnpm
         shell: bash
