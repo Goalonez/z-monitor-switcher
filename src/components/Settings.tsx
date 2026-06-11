@@ -1,8 +1,5 @@
 import type { UseSettingsResult } from "@/hooks/useSettings";
-<<<<<<< HEAD
-=======
 import type { UseUpdaterResult } from "@/hooks/useUpdater";
->>>>>>> dev
 import { useI18n, type Language } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Loader2, X } from "lucide-react";
@@ -10,18 +7,11 @@ import { Loader2, X } from "lucide-react";
 interface SettingsProps {
   open: boolean;
   settings: UseSettingsResult;
-<<<<<<< HEAD
-  onOpenChange: (open: boolean) => void;
-}
-
-export function Settings({ open, settings, onOpenChange }: SettingsProps) {
-=======
   updater: UseUpdaterResult;
   onOpenChange: (open: boolean) => void;
 }
 
 export function Settings({ open, settings, updater, onOpenChange }: SettingsProps) {
->>>>>>> dev
   const { language, setLanguage, t } = useI18n();
 
   if (!open) return null;
@@ -143,8 +133,6 @@ export function Settings({ open, settings, updater, onOpenChange }: SettingsProp
               ))}
             </div>
           </div>
-<<<<<<< HEAD
-=======
 
           <div className="space-y-2 border-t pt-4">
             <div className="flex items-center justify-between gap-3">
@@ -214,7 +202,6 @@ export function Settings({ open, settings, updater, onOpenChange }: SettingsProp
               )}
             </div>
           </div>
->>>>>>> dev
         </div>
       </div>
     </div>
