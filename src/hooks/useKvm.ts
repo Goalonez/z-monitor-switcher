@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { KvmConfig, MonitorInfo, PostAction } from "@/lib/types";
 import {
+  emitInputChanged,
+  onInputSwitchRequested,
+} from "@/lib/events";
+import {
   loadKvmConfig,
   saveKvmConfig,
   DEFAULT_KVM_CONFIG,
@@ -8,15 +12,21 @@ import {
   kvmKey,
   type KvmConfigChangedDetail,
 } from "@/lib/store";
-import { runPostAction } from "@/lib/api";
+import { runPostAction, setInput } from "@/lib/api";
+import { showMainWindow } from "@/lib/tray";
 
 type Status = "loading" | "ready";
+
+interface PendingSwitch {
+  monitor: MonitorInfo;
+  value: number;
+}
 
 interface UseKvmResult {
   /** Persisted KVM config (enabled / trigger / action). */
   config: KvmConfig;
   status: Status;
-  /** The post-action awaiting user confirmation, or `"none"`. */
+  /** The post-action choice awaiting user confirmation, or `"none"`. */
   pending: PostAction;
   /** Whether the OS command is currently running (after confirm). */
   running: boolean;
@@ -27,23 +37,26 @@ interface UseKvmResult {
   /** Edit + persist KVM config for the selected monitor. */
   updateConfig: (patch: Partial<KvmConfig>, monitor?: MonitorInfo) => void;
   /**
-   * Call after a successful input switch. If KVM is enabled and `value` matches
-   * the configured trigger (and the action isn't "none"), this OPENS the
-   * confirmation dialog — it never runs the action directly.
+   * Call before an input switch. Returns true when KVM has taken over the
+   * switch flow by opening the shutdown choice dialog.
    */
-  maybeTrigger: (monitor: MonitorInfo, value: number) => void;
-  /** Confirm the pending action: run it on this machine (irreversible). */
+  requestSwitch: (
+    monitor: MonitorInfo,
+    value: number,
+    options?: { showWindow?: boolean },
+  ) => Promise<boolean>;
+  /** Confirm the pending action: switch input, then shut down this machine. */
   confirm: () => void;
-  /** Cancel the pending action: abort with no side effect. */
+  /** Skip shutdown for the pending action: switch input only. */
   cancel: () => void;
 }
 
 /**
  * Owns the KVM post-action config and the confirm-before-run flow (R11).
  *
- * SAFETY: `maybeTrigger` only ever opens a confirmation dialog; the irreversible
- * shutdown command runs solely from `confirm` (after the user confirms or the
- * dialog countdown elapses). It is never executed implicitly.
+ * SAFETY: `requestSwitch` opens a confirmation dialog before switching away
+ * from this machine. The irreversible shutdown command runs solely from
+ * `confirm`, after the user explicitly chooses shutdown.
  */
 export function useKvm(): UseKvmResult {
   const [config, setConfig] = useState<KvmConfig>(DEFAULT_KVM_CONFIG);
@@ -51,9 +64,19 @@ export function useKvm(): UseKvmResult {
   const [activeKey, setActiveKey] = useState(kvmKey());
   const activeKeyRef = useRef(activeKey);
   const loadVersionRef = useRef(0);
-  const [pending, setPending] = useState<PostAction>("none");
+  const [pendingSwitch, setPendingSwitch] = useState<PendingSwitch | null>(
+    null,
+  );
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const loadForMonitor = useCallback((monitor?: MonitorInfo) => {
     const key = kvmKey(monitor);
@@ -110,49 +133,97 @@ export function useKvm(): UseKvmResult {
     [],
   );
 
-  const maybeTrigger = useCallback(
-    (monitor: MonitorInfo, value: number) => {
-      void loadKvmConfig(monitor).then((current) => {
-        if (!current.enabled) return;
-        if (value !== current.triggerValue) return;
-        // Open the confirmation dialog — DO NOT run the action here.
-        setError(null);
-        setPending("shutdown");
-      });
+  const performSwitch = useCallback(
+    async (monitor: MonitorInfo, value: number) => {
+      await setInput(monitor.id, value);
+      emitInputChanged({ monitorId: monitor.id, value });
     },
     [],
   );
 
+  const requestSwitch = useCallback(
+    (
+      monitor: MonitorInfo,
+      value: number,
+      options?: { showWindow?: boolean },
+    ): Promise<boolean> =>
+      loadKvmConfig(monitor)
+        .then((current) => {
+          if (!mountedRef.current) return true;
+          if (!current.enabled) return false;
+          if (value !== current.triggerValue) return false;
+          if (options?.showWindow) void showMainWindow().catch(() => {});
+          setError(null);
+          setRunning(false);
+          setPendingSwitch({ monitor, value });
+          return true;
+        })
+        .catch(() => false),
+    [],
+  );
+
+  useEffect(() => {
+    let active = true;
+    const unlistenPromise = onInputSwitchRequested(({ monitor, value }) => {
+      if (!active) return;
+      void requestSwitch(monitor, value, { showWindow: true }).then(
+        (handled) => {
+          if (!active || handled) return;
+          void performSwitch(monitor, value).catch(() => {
+            // Best-effort: the global-hotkey path has no inline switch UI.
+          });
+        },
+      );
+    });
+    return () => {
+      active = false;
+      void unlistenPromise.then((unlisten) => unlisten());
+    };
+  }, [performSwitch, requestSwitch]);
+
+  const switchPending = useCallback(
+    (shutdownAfter: boolean) => {
+      if (!pendingSwitch) return;
+      setRunning(true);
+      setError(null);
+      performSwitch(pendingSwitch.monitor, pendingSwitch.value)
+        .then(() => {
+          if (!shutdownAfter) {
+            setRunning(false);
+            setPendingSwitch(null);
+            return;
+          }
+          return runPostAction("shutdown").then(() => {
+            // On success the OS is shutting down; nothing more to do.
+            setRunning(false);
+            setPendingSwitch(null);
+          });
+        })
+        .catch((err: unknown) => {
+          setRunning(false);
+          setError(err instanceof Error ? err.message : String(err));
+        });
+    },
+    [pendingSwitch, performSwitch],
+  );
+
   const confirm = useCallback(() => {
-    if (pending === "none") return;
-    setRunning(true);
-    setError(null);
-    runPostAction(pending)
-      .then(() => {
-        // On success the OS is shutting down; nothing more to do.
-        setRunning(false);
-        setPending("none");
-      })
-      .catch((err: unknown) => {
-        setRunning(false);
-        setError(err instanceof Error ? err.message : String(err));
-      });
-  }, [pending]);
+    switchPending(true);
+  }, [switchPending]);
 
   const cancel = useCallback(() => {
-    setPending("none");
-    setError(null);
-  }, []);
+    switchPending(false);
+  }, [switchPending]);
 
   return {
     config,
     status,
-    pending,
+    pending: pendingSwitch ? "shutdown" : "none",
     running,
     error,
     loadForMonitor,
     updateConfig,
-    maybeTrigger,
+    requestSwitch,
     confirm,
     cancel,
   };

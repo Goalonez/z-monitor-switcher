@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import type { PostAction } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { useI18n } from "@/lib/i18n";
@@ -7,51 +6,31 @@ import { AlertTriangle, Loader2 } from "lucide-react";
 interface PostActionDialogProps {
   /** Which destructive action is pending; `"none"` hides the dialog. */
   action: PostAction;
-  /** Seconds before auto-confirm. The countdown is cancelable at any time. */
-  countdownSeconds?: number;
-  /** Whether the OS command is currently running (after confirm). */
+  /** Whether the switch/shutdown branch is currently running. */
   running?: boolean;
-  /** Error message if the command failed to launch. */
+  /** Error message if the switch or shutdown command failed. */
   error?: string | null;
-  /** User confirmed (or countdown elapsed): run the action now. */
+  /** User chose shutdown: switch input, then run the action. */
   onConfirm: () => void;
-  /** User canceled: abort, no side effect. */
+  /** User chose no shutdown: switch input only. */
   onCancel: () => void;
 }
 
 /**
  * Confirmation modal for the irreversible KVM shutdown action.
  *
- * SAFETY: this is the ONLY gate before {@link runPostAction}. It shows a
- * cancelable countdown so an accidental trigger never silently shuts down the
- * machine. Nothing runs until either the user confirms or the countdown elapses.
+ * SAFETY: this is the ONLY gate before {@link runPostAction}. It appears before
+ * the input source switches away, so the user can decide per switch whether the
+ * current machine should shut down.
  */
 export function PostActionDialog({
   action,
-  countdownSeconds = 10,
   running = false,
   error = null,
   onConfirm,
   onCancel,
 }: PostActionDialogProps) {
   const { t } = useI18n();
-  const [remaining, setRemaining] = useState(countdownSeconds);
-
-  // Reset the countdown whenever a new action is shown.
-  useEffect(() => {
-    setRemaining(countdownSeconds);
-  }, [action, countdownSeconds]);
-
-  // Tick down once per second while the dialog is open and not yet running.
-  useEffect(() => {
-    if (action === "none" || running) return;
-    if (remaining <= 0) {
-      onConfirm();
-      return;
-    }
-    const timer = window.setTimeout(() => setRemaining((r) => r - 1), 1000);
-    return () => window.clearTimeout(timer);
-  }, [action, running, remaining, onConfirm]);
 
   if (action === "none") return null;
 
@@ -66,10 +45,15 @@ export function PostActionDialog({
         </div>
 
         <p className="text-sm text-muted-foreground">
-          {t("shutdownDialogBefore")}{" "}
-          <span className="font-semibold text-foreground">{remaining}</span>{" "}
-          {t("shutdownDialogAfter")}
+          {t("shutdownDialogMessage")}
         </p>
+
+        {running && (
+          <p className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            {t("switchingInput")}
+          </p>
+        )}
 
         {error && (
           <p className="text-sm text-destructive">
@@ -80,7 +64,7 @@ export function PostActionDialog({
 
         <div className="flex justify-end gap-2">
           <Button variant="outline" size="sm" onClick={onCancel} disabled={running}>
-            {t("cancel")}
+            {t("switchWithoutShutdown")}
           </Button>
           <Button
             variant="default"
@@ -88,7 +72,6 @@ export function PostActionDialog({
             onClick={onConfirm}
             disabled={running}
           >
-            {running && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
             {t("shutdownNow")}
           </Button>
         </div>

@@ -9,6 +9,7 @@ import {
 import { applyConfiguredHotkeys, clearHotkeys } from "@/lib/hotkeys";
 import { Button } from "@/components/ui/button";
 import { useI18n } from "@/lib/i18n";
+import { cn } from "@/lib/utils";
 import {
   Check,
   Keyboard,
@@ -24,8 +25,8 @@ interface InputSwitcherProps {
   monitor: MonitorInfo;
   manageOpen?: boolean;
   onManageOpenChange?: (open: boolean) => void;
-  /** Called with the input value after a successful switch (KVM trigger). */
-  onSwitched?: (value: number) => void;
+  /** Called before switching so KVM can intercept trigger values. */
+  onSwitchRequested?: (value: number) => Promise<boolean>;
 }
 
 /**
@@ -37,7 +38,7 @@ export function InputSwitcher({
   monitor,
   manageOpen = false,
   onManageOpenChange,
-  onSwitched,
+  onSwitchRequested,
 }: InputSwitcherProps) {
   const {
     config,
@@ -51,7 +52,7 @@ export function InputSwitcher({
     addSource,
     removeSource,
     resetSources,
-  } = useMonitorInput(monitor, onSwitched);
+  } = useMonitorInput(monitor, { onSwitchRequested });
   const { t } = useI18n();
   const [recordingIndex, setRecordingIndex] = useState<number | null>(null);
   const [recordingHotkeyError, setRecordingHotkeyError] = useState<
@@ -129,10 +130,15 @@ export function InputSwitcher({
         {enabledSources.map((source, index) => (
           <Button
             key={`${source.label}-${index}`}
-            variant={activeValue === source.value ? "default" : "outline"}
+            variant="outline"
             size="sm"
-            className="min-w-0"
+            className={cn(
+              "min-w-0 transition active:scale-[0.98]",
+              activeValue === source.value &&
+                "border-primary/50 bg-accent text-accent-foreground",
+            )}
             disabled={status === "switching"}
+            aria-pressed={activeValue === source.value}
             onClick={() => switchTo(source.value)}
           >
             {status === "switching" && activeValue === source.value && (

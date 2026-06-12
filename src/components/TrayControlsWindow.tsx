@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { LogicalSize } from "@tauri-apps/api/dpi";
 import { AdjustControls } from "@/components/AdjustControls";
@@ -9,8 +9,13 @@ import { Select } from "@/components/ui/select";
 import { useMonitors } from "@/hooks/useMonitors";
 import { useI18n } from "@/lib/i18n";
 import { controllableMonitors, formatMonitorName } from "@/lib/monitor";
-import { showMainWindow } from "@/lib/tray";
+import {
+  showMainWindow,
+  TRAY_CONTROLS_INITIAL_SIZE_EVENT,
+} from "@/lib/tray";
 import { quitApp } from "@/lib/api";
+import { emitInputSwitchRequested } from "@/lib/events";
+import { loadKvmConfig } from "@/lib/store";
 import {
   Loader2,
   MonitorOff,
@@ -41,6 +46,16 @@ export function TrayControlsWindow() {
       displayMonitors[0],
     [displayMonitors, selectedId],
   );
+  const handleSwitchRequested = useCallback(
+    async (value: number) => {
+      if (!selectedMonitor) return false;
+      const kvmConfig = await loadKvmConfig(selectedMonitor);
+      if (!kvmConfig.enabled || value !== kvmConfig.triggerValue) return false;
+      emitInputSwitchRequested({ monitor: selectedMonitor, value });
+      return true;
+    },
+    [selectedMonitor],
+  );
 
   useEffect(() => {
     if (status !== "ready" || displayMonitors.length === 0) {
@@ -70,6 +85,7 @@ export function TrayControlsWindow() {
     if (!el || typeof ResizeObserver === "undefined") return;
     let lastW = 0;
     let lastH = 0;
+    let reportedInitialSize = false;
     const apply = () => {
       const width = Math.ceil(el.offsetWidth);
       const height = Math.ceil(el.offsetHeight);
@@ -79,6 +95,16 @@ export function TrayControlsWindow() {
       lastH = height;
       void getCurrentWindow()
         .setSize(new LogicalSize(width, height))
+        .then(() => {
+          if (reportedInitialSize) return;
+          reportedInitialSize = true;
+          void getCurrentWindow()
+            .emitTo("main", TRAY_CONTROLS_INITIAL_SIZE_EVENT, {
+              width,
+              height,
+            })
+            .catch(() => {});
+        })
         .catch(() => {});
     };
     const observer = new ResizeObserver(() => apply());
@@ -148,6 +174,7 @@ export function TrayControlsWindow() {
               <InputQuickSwitch
                 key={`input-${selectedMonitor.id}`}
                 monitor={selectedMonitor}
+                onSwitchRequested={handleSwitchRequested}
               />
             </div>
           </>

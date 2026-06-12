@@ -7,6 +7,12 @@ use monitor::{backend, MonitorCapabilities, MonitorControl, MonitorError, Monito
 use native_control::NativeControlCapabilities;
 use post_action::PostAction;
 
+const SILENT_START_ARG: &str = "--silent-start";
+
+fn is_silent_start() -> bool {
+    std::env::args().any(|arg| arg == SILENT_START_ARG)
+}
+
 /// Enumerate connected displays. Best-effort: a backend that cannot read a
 /// particular display still returns the others and marks unsupported ones.
 #[tauri::command]
@@ -182,23 +188,32 @@ pub fn run() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::AppleScript,
-            None,
+            Some(vec![SILENT_START_ARG]),
         ))
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init());
 
     builder
-        .setup(|_app| {
+        .setup(|app| {
             // macOS: default to a normal Dock-visible app. The frontend can
             // switch to Accessory later if the persisted setting asks for a
             // menu-bar-only app.
             #[cfg(target_os = "macos")]
-            _app.set_activation_policy(tauri::ActivationPolicy::Regular);
+            app.set_activation_policy(tauri::ActivationPolicy::Regular);
 
             // Start watching for display hot-plug / reconfiguration so the
             // frontend can re-enumerate automatically (macOS native callback;
             // Windows falls back to the manual refresh button). Best-effort.
-            display_watch::start(_app.handle().clone());
+            display_watch::start(app.handle().clone());
+
+            if !is_silent_start() {
+                use tauri::Manager;
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.unminimize();
+                    let _ = window.set_focus();
+                }
+            }
             Ok(())
         })
         .on_window_event(|window, event| {

@@ -1,5 +1,7 @@
 import { TrayIcon } from "@tauri-apps/api/tray";
 import { defaultWindowIcon } from "@tauri-apps/api/app";
+import { listen } from "@tauri-apps/api/event";
+import type { UnlistenFn } from "@tauri-apps/api/event";
 import { Image } from "@tauri-apps/api/image";
 import {
   PhysicalPosition,
@@ -28,9 +30,11 @@ import { getOs } from "@/lib/api";
 
 const TRAY_ID = "main-tray";
 const TRAY_CONTROLS_WINDOW_LABEL = "tray-controls";
+export const TRAY_CONTROLS_INITIAL_SIZE_EVENT =
+  "tray-controls-initial-size";
 /** Initial panel size in logical pixels; the frontend corrects height via setSize. */
 const PANEL_LOGICAL_WIDTH = 320;
-const PANEL_LOGICAL_HEIGHT = 300;
+const PANEL_LOGICAL_HEIGHT = 440;
 /** Lower bounds so the frontend's setSize can shrink/grow the window freely. */
 const PANEL_MIN_WIDTH = 200;
 const PANEL_MIN_HEIGHT = 120;
@@ -47,6 +51,27 @@ let trayControlsFocusUnlisten: (() => void) | null = null;
 let trayControlsDestroyedUnlisten: (() => void) | null = null;
 let lastFocusDismissedAt = 0;
 let trayClickHideInProgress = false;
+
+function waitForTrayControlsInitialSize(timeoutMs = 700): Promise<void> {
+  return new Promise((resolve) => {
+    let settled = false;
+    let unlisten: UnlistenFn | null = null;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timer);
+      unlisten?.();
+      resolve();
+    };
+    const timer = window.setTimeout(finish, timeoutMs);
+    void listen(TRAY_CONTROLS_INITIAL_SIZE_EVENT, finish)
+      .then((fn) => {
+        if (settled) fn();
+        else unlisten = fn;
+      })
+      .catch(finish);
+  });
+}
 
 /** Show and focus the main window (also un-minimizes if needed). */
 export async function showMainWindow(): Promise<void> {
@@ -186,6 +211,7 @@ async function showTrayControls(event?: TrayIconEvent): Promise<void> {
     return;
   }
 
+  const initialSizeReady = waitForTrayControlsInitialSize();
   const controls = new WebviewWindow(TRAY_CONTROLS_WINDOW_LABEL, {
     url: "/",
     title: "Z Monitor Switcher",
@@ -200,7 +226,8 @@ async function showTrayControls(event?: TrayIconEvent): Promise<void> {
     alwaysOnTop: true,
     skipTaskbar: true,
     visibleOnAllWorkspaces: true,
-    focus: true,
+    visible: false,
+    focus: false,
     // Center when we have no event; otherwise we set the physical position
     // explicitly after creation (logical x/y would mis-place on Retina).
     center: !event,
@@ -215,14 +242,15 @@ async function showTrayControls(event?: TrayIconEvent): Promise<void> {
   });
 
   await ensureTrayControlsFocusDismissal(controls).catch(() => {});
+  await initialSizeReady;
 
   // Position in physical pixels after creation so Retina scaling is honored.
   if (event) {
     await positionTrayControls(controls, event).catch(() => {});
-    await controls.show().catch(() => {});
-    await controls.setFocus().catch(() => {});
     scheduleTrayControlsReposition(controls, event);
   }
+  await controls.show().catch(() => {});
+  await controls.setFocus().catch(() => {});
 }
 
 /**

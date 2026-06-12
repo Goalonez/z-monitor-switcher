@@ -17,6 +17,7 @@ import {
 } from "@/lib/events";
 
 type SwitchStatus = "idle" | "switching" | "error";
+type SwitchRequestHandler = (value: number) => Promise<boolean>;
 
 interface UseMonitorInputResult {
   /** Persisted config (preset + editable sources) for this monitor. */
@@ -29,7 +30,7 @@ interface UseMonitorInputResult {
   error: string | null;
   /** Last input-source config / shortcut registration error, if any. */
   configError: string | null;
-  /** Optimistically switch input, rolling back on backend failure. */
+  /** Request an input switch, letting KVM intercept trigger values first. */
   switchTo: (value: number) => void;
   /** Replace the source list with a preset's defaults and persist. */
   applyPreset: (presetId: string) => void;
@@ -48,14 +49,17 @@ interface UseMonitorInputResult {
  * the optimistic switch flow: update UI immediately, write DDC in the
  * background, roll the active value back on failure.
  *
- * `onSwitched` (optional) is invoked with the value AFTER a successful DDC
- * write, so the KVM flow can offer a post-action when the trigger input was
- * selected. It is never called on failure.
+ * `onSwitchRequested` (optional) runs before the DDC write. It can return true
+ * to take over the switch flow (for example, KVM confirmation before switching
+ * away).
  */
 export function useMonitorInput(
   monitor: MonitorInfo,
-  onSwitched?: (value: number) => void,
+  options: {
+    onSwitchRequested?: SwitchRequestHandler;
+  } = {},
 ): UseMonitorInputResult {
+  const { onSwitchRequested } = options;
   const [config, setConfig] = useState<MonitorInputConfig>(defaultConfig);
   const [activeValue, setActiveValue] = useState<number | null>(null);
   const [status, setStatus] = useState<SwitchStatus>("idle");
@@ -124,7 +128,7 @@ export function useMonitorInput(
     [monitor],
   );
 
-  const switchTo = useCallback(
+  const performSwitch = useCallback(
     (value: number) => {
       // Optimistic: reflect the new input immediately, before the slow DDC write.
       const previous = activeValue;
@@ -138,8 +142,6 @@ export function useMonitorInput(
       setInput(monitor.id, value)
         .then(() => {
           setStatus("idle");
-          // Fire the KVM hook only after a confirmed-good write.
-          onSwitched?.(value);
         })
         .catch((err: unknown) => {
           // Roll back: 0x60 reads are unreliable, so we trust our own last
@@ -149,7 +151,25 @@ export function useMonitorInput(
           setStatus("error");
         });
     },
-    [activeValue, monitor.id, onSwitched],
+    [activeValue, monitor.id],
+  );
+
+  const switchTo = useCallback(
+    (value: number) => {
+      if (!onSwitchRequested) {
+        performSwitch(value);
+        return;
+      }
+      void onSwitchRequested(value)
+        .then((handled) => {
+          if (!handled) performSwitch(value);
+        })
+        .catch((err: unknown) => {
+          setError(err instanceof Error ? err.message : String(err));
+          setStatus("error");
+        });
+    },
+    [onSwitchRequested, performSwitch],
   );
 
   const applyPreset = useCallback(

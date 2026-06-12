@@ -1,4 +1,5 @@
 import { emit, listen, type UnlistenFn } from "@tauri-apps/api/event";
+import type { MonitorInfo } from "@/lib/types";
 
 /**
  * Tauri event names emitted by the Rust backend. Keep in sync with
@@ -39,6 +40,7 @@ const LEVELS_CHANGED_EVENT = "monitor-levels-changed";
 const NATIVE_LEVELS_CHANGED_EVENT = "native-levels-changed";
 const INPUT_CHANGED_EVENT = "monitor-input-changed";
 const CONFIG_CHANGED_EVENT = "monitor-config-changed";
+const INPUT_SWITCH_REQUESTED_EVENT = "monitor-input-switch-requested";
 
 export interface LevelsChangedPayload {
   monitorId: string;
@@ -58,6 +60,11 @@ export interface InputChangedPayload {
 
 export interface ConfigChangedPayload {
   monitorId: string;
+}
+
+export interface InputSwitchRequestedPayload {
+  monitor: MonitorInfo;
+  value: number;
 }
 
 /** Broadcast a settled brightness/volume change for a monitor. */
@@ -116,5 +123,22 @@ export function onConfigChanged(
 ): Promise<UnlistenFn> {
   return listen<ConfigChangedPayload>(CONFIG_CHANGED_EVENT, (event) =>
     handler(event.payload),
+  );
+}
+
+/** Broadcast an input-switch request from a non-React control path. */
+export function emitInputSwitchRequested(
+  payload: InputSwitchRequestedPayload,
+): void {
+  void emit(INPUT_SWITCH_REQUESTED_EVENT, payload).catch(() => {});
+}
+
+/** Subscribe to input-switch requests from global hotkeys or similar paths. */
+export function onInputSwitchRequested(
+  handler: (payload: InputSwitchRequestedPayload) => void,
+): Promise<UnlistenFn> {
+  return listen<InputSwitchRequestedPayload>(
+    INPUT_SWITCH_REQUESTED_EVENT,
+    (event) => handler(event.payload),
   );
 }

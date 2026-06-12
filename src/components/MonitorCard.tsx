@@ -13,8 +13,8 @@ interface MonitorCardProps {
   kvm: ReturnType<typeof useKvm>;
   manageOpen?: boolean;
   onManageOpenChange?: (open: boolean) => void;
-  /** Forwarded to InputSwitcher: fires the KVM trigger after a switch. */
-  onSwitched?: (value: number) => void;
+  /** Forwarded to InputSwitcher: lets KVM intercept before switching. */
+  onSwitchRequested?: (value: number) => Promise<boolean>;
 }
 
 export function MonitorCard({
@@ -22,7 +22,7 @@ export function MonitorCard({
   kvm,
   manageOpen,
   onManageOpenChange,
-  onSwitched,
+  onSwitchRequested,
 }: MonitorCardProps) {
   const supported = monitor.ddcSupported;
   const { t } = useI18n();
@@ -77,7 +77,7 @@ export function MonitorCard({
             monitor={monitor}
             manageOpen={manageOpen}
             onManageOpenChange={onManageOpenChange}
-            onSwitched={onSwitched}
+            onSwitchRequested={onSwitchRequested}
           />
         )}
         {supported && <AdjustControls monitor={monitor} layout="vertical" />}

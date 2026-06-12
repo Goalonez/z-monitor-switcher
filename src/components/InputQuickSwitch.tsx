@@ -2,12 +2,13 @@ import type { MonitorInfo } from "@/lib/types";
 import { useMonitorInput } from "@/hooks/useMonitorInput";
 import { Button } from "@/components/ui/button";
 import { useI18n } from "@/lib/i18n";
+import { cn } from "@/lib/utils";
 import { Loader2, MonitorUp } from "lucide-react";
 
 interface InputQuickSwitchProps {
   monitor: MonitorInfo;
-  /** Called with the input value after a successful switch (KVM trigger). */
-  onSwitched?: (value: number) => void;
+  /** Called before switching so KVM can intercept trigger values. */
+  onSwitchRequested?: (value: number) => Promise<boolean>;
 }
 
 /**
@@ -15,10 +16,13 @@ interface InputQuickSwitchProps {
  * same optimistic switch flow as the main window (useMonitorInput) but without
  * the full manage-inputs modal, so it can live inside the tray panel.
  */
-export function InputQuickSwitch({ monitor, onSwitched }: InputQuickSwitchProps) {
+export function InputQuickSwitch({
+  monitor,
+  onSwitchRequested,
+}: InputQuickSwitchProps) {
   const { config, activeValue, status, error, switchTo } = useMonitorInput(
     monitor,
-    onSwitched,
+    { onSwitchRequested },
   );
   const { t } = useI18n();
   const enabledSources = config.sources.filter((source) => source.enabled);
@@ -33,10 +37,15 @@ export function InputQuickSwitch({ monitor, onSwitched }: InputQuickSwitchProps)
         {enabledSources.map((source, index) => (
           <Button
             key={`${source.label}-${index}`}
-            variant={activeValue === source.value ? "default" : "outline"}
+            variant="outline"
             size="sm"
-            className="min-w-0"
+            className={cn(
+              "min-w-0 transition active:scale-[0.98]",
+              activeValue === source.value &&
+                "border-primary/50 bg-accent text-accent-foreground",
+            )}
             disabled={status === "switching"}
+            aria-pressed={activeValue === source.value}
             onClick={() => switchTo(source.value)}
           >
             {status === "switching" && activeValue === source.value && (

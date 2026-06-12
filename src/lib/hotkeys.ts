@@ -5,12 +5,14 @@ import {
 } from "@tauri-apps/plugin-global-shortcut";
 import type { ShortcutEvent } from "@tauri-apps/plugin-global-shortcut";
 import type { MonitorInfo } from "@/lib/types";
-import { listMonitors, setInput } from "@/lib/api";
+import { listMonitors } from "@/lib/api";
 import { loadConfig } from "@/lib/store";
 import { displayAccelerator, normalizeAccelerator } from "@/lib/accelerators";
+import { emitInputSwitchRequested } from "@/lib/events";
 
 interface HotkeyBinding {
   accelerator: string;
+  monitor: MonitorInfo;
   monitorId: string;
   monitorName: string;
   sourceLabel: string;
@@ -25,9 +27,9 @@ interface HotkeyBinding {
  *
  * Registration failures (e.g. an accelerator already taken by the OS / another
  * app) are surfaced as a thrown string so the caller can show the closed-loop
- * error state. DDC failures inside the handler are swallowed here (the hotkey
- * path has no UI to roll back); the in-window controls remain the authoritative
- * place to see switch errors.
+ * error state. Hotkey presses are forwarded to the app-level KVM/input switch
+ * flow so the "shutdown after switch" choice can be made before DDC switches
+ * the screen away.
  */
 export async function applyHotkeys(bindings: HotkeyBinding[]): Promise<void> {
   // Clear everything we previously registered before (re)applying.
@@ -49,8 +51,9 @@ export async function applyHotkeys(bindings: HotkeyBinding[]): Promise<void> {
     if (event.state !== "Pressed") return;
     const binding = byAccelerator.get(normalizeAccelerator(event.shortcut));
     if (binding) {
-      void setInput(binding.monitorId, binding.value).catch(() => {
-        // Best-effort: no window-bound UI on the hotkey path to surface this.
+      emitInputSwitchRequested({
+        monitor: binding.monitor,
+        value: binding.value,
       });
     }
   };
@@ -95,6 +98,7 @@ export async function configuredHotkeysForMonitors(
         .filter((source) => source.enabled && source.accelerator.trim())
         .map((source) => ({
           accelerator: normalizeAccelerator(source.accelerator),
+          monitor,
           monitorId: monitor.id,
           monitorName: monitor.name,
           sourceLabel: source.label,

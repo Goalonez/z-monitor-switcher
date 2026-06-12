@@ -15,14 +15,17 @@ interface MonitorListProps {
   state: UseMonitorsResult;
   /** KVM post-action config shown in the selected monitor card. */
   kvm: ReturnType<typeof useKvm>;
-  /** Forwarded to each card: fires the KVM trigger after an input switch. */
-  onSwitched?: (monitor: MonitorInfo, value: number) => void;
+  /** Forwarded to each card: lets KVM intercept before switching. */
+  onSwitchRequested?: (
+    monitor: MonitorInfo,
+    value: number,
+  ) => Promise<boolean>;
 }
 
 export function MonitorList({
   state,
   kvm,
-  onSwitched,
+  onSwitchRequested,
 }: MonitorListProps) {
   const { status, monitors, error, refresh } = state;
   const { t } = useI18n();
@@ -129,7 +132,9 @@ export function MonitorList({
           kvm={kvm}
           manageOpen={manageOpen}
           onManageOpenChange={setManageOpen}
-          onSwitched={(value) => onSwitched?.(selectedMonitor, value)}
+          onSwitchRequested={(value) =>
+            onSwitchRequested?.(selectedMonitor, value) ?? Promise.resolve(false)
+          }
         />
       )}
     </div>

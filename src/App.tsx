@@ -33,8 +33,14 @@ function MainWindow() {
   // apps). Pulse always-on-top briefly so it surfaces without staying pinned.
   useEffect(() => {
     const win = getCurrentWindow();
-    void win.setFocus().catch(() => {});
-    void win.setAlwaysOnTop(true).catch(() => {});
+    void win
+      .isVisible()
+      .then((visible) => {
+        if (!visible) return;
+        void win.setFocus().catch(() => {});
+        void win.setAlwaysOnTop(true).catch(() => {});
+      })
+      .catch(() => {});
     const timer = setTimeout(() => {
       void win.setAlwaysOnTop(false).catch(() => {});
     }, 400);
@@ -88,7 +94,7 @@ function MainWindow() {
       <MonitorList
         state={monitorsState}
         kvm={kvm}
-        onSwitched={kvm.maybeTrigger}
+        onSwitchRequested={kvm.requestSwitch}
       />
       <Settings
         open={settingsOpen}
