@@ -86,6 +86,21 @@ export async function setSystemVolume(value: number): Promise<void> {
   return invoke<void>("set_system_volume", { value });
 }
 
+/** macOS: keep the display from idle sleeping while enabled. */
+export async function setKeepAwake(enabled: boolean): Promise<void> {
+  return invoke<void>("set_keep_awake", { enabled });
+}
+
+/** macOS: promote clean-mode windows to native screen-level overlays. */
+export async function beginCleanMode(labels: string[]): Promise<void> {
+  return invoke<void>("begin_clean_mode", { labels });
+}
+
+/** macOS: restore native state changed by clean mode. */
+export async function endCleanMode(): Promise<void> {
+  return invoke<void>("end_clean_mode");
+}
+
 /**
  * Run the KVM post-switch shutdown action on THIS machine (R11).
  *

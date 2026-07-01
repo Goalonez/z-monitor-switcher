@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { CleanModeWindow } from "@/components/CleanModeWindow";
 import { MonitorList } from "@/components/MonitorList";
 import { NativeControls } from "@/components/NativeControls";
 import { PostActionDialog } from "@/components/PostActionDialog";
@@ -15,9 +16,17 @@ import { useI18n } from "@/lib/i18n";
 import { openUrl, quitApp } from "@/lib/api";
 import { Github, Power, Settings as SettingsIcon } from "lucide-react";
 import logoUrl from "@/assets/logo.png";
+import {
+  CLEAN_MODE_WINDOW_PREFIX,
+  isPrimaryCleanModeWindow,
+  showCleanMode,
+} from "@/lib/cleanMode";
 
 function App() {
   const windowLabel = getCurrentWebviewWindow().label;
+  if (windowLabel.startsWith(CLEAN_MODE_WINDOW_PREFIX)) {
+    return <CleanModeWindow primary={isPrimaryCleanModeWindow(windowLabel)} />;
+  }
   return windowLabel === "tray-controls" ? <TrayControlsWindow /> : <MainWindow />;
 }
 
@@ -90,7 +99,9 @@ function MainWindow() {
           </Button>
         </div>
       </header>
-      <NativeControls />
+      <NativeControls
+        onCleanModeRequested={() => void showCleanMode().catch(() => {})}
+      />
       <MonitorList
         state={monitorsState}
         kvm={kvm}

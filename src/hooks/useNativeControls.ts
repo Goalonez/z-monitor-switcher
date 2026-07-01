@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { NativeControlCapabilities } from "@/lib/types";
 import {
   probeNativeControls,
+  setKeepAwake,
   setNativeBrightness,
   setSystemVolume,
 } from "@/lib/api";
@@ -10,6 +11,7 @@ import {
   onNativeLevelsChanged,
 } from "@/lib/events";
 import { useDebouncedCallback } from "@/hooks/useDebouncedCallback";
+import { loadKeepAwake, saveKeepAwake } from "@/lib/store";
 
 const WRITE_DEBOUNCE_MS = 150;
 const DEFAULT_MAX = 100;
@@ -22,14 +24,18 @@ interface UseNativeControlsResult {
   writeError: string | null;
   nativeBrightnessSupported: boolean;
   systemVolumeSupported: boolean;
+  keepAwakeSupported: boolean;
   nativeBrightnessUnavailableReason: string | null;
   systemVolumeUnavailableReason: string | null;
+  keepAwakeUnavailableReason: string | null;
   nativeBrightness: number | null;
   systemVolume: number | null;
+  keepAwake: boolean;
   nativeBrightnessMax: number;
   systemVolumeMax: number;
   changeNativeBrightness: (value: number) => void;
   changeSystemVolume: (value: number) => void;
+  toggleKeepAwake: (enabled: boolean) => void;
 }
 
 export type { UseNativeControlsResult };
@@ -48,13 +54,18 @@ export function useNativeControls(): UseNativeControlsResult {
     null,
   );
   const [systemVolume, setSystemVolumeState] = useState<number | null>(null);
+  const [keepAwake, setKeepAwakeState] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    setStatus("loading");
-    setError(null);
-    probeNativeControls()
-      .then((result) => {
+    (async () => {
+      setStatus("loading");
+      setError(null);
+      try {
+        const [result, persistedKeepAwake] = await Promise.all([
+          probeNativeControls(),
+          loadKeepAwake().catch(() => false),
+        ]);
         if (cancelled) return;
         setCaps(result);
         setNativeBrightnessState(
@@ -67,13 +78,31 @@ export function useNativeControls(): UseNativeControlsResult {
             ? (result.systemVolume.current ?? 50)
             : null,
         );
+        setKeepAwakeState(
+          result.keepAwake.supported
+            ? persistedKeepAwake || result.keepAwake.enabled
+            : false,
+        );
         setStatus("ready");
-      })
-      .catch((err: unknown) => {
+        if (
+          result.keepAwake.supported &&
+          persistedKeepAwake &&
+          !result.keepAwake.enabled
+        ) {
+          void setKeepAwake(true)
+            .then(() => emitNativeLevelsChanged({ keepAwake: true }))
+            .catch((err: unknown) => {
+              if (cancelled) return;
+              setKeepAwakeState(false);
+              setWriteError(err instanceof Error ? err.message : String(err));
+            });
+        }
+      } catch (err: unknown) {
         if (cancelled) return;
         setError(err instanceof Error ? err.message : String(err));
         setStatus("error");
-      });
+      }
+    })();
     return () => {
       cancelled = true;
     };
@@ -108,6 +137,9 @@ export function useNativeControls(): UseNativeControlsResult {
       if (payload.systemVolume !== undefined) {
         setSystemVolumeState(payload.systemVolume);
       }
+      if (payload.keepAwake !== undefined) {
+        setKeepAwakeState(payload.keepAwake);
+      }
     }).then((fn) => {
       if (active) unlisten = fn;
       else fn();
@@ -134,20 +166,46 @@ export function useNativeControls(): UseNativeControlsResult {
     [writeSystemVolume],
   );
 
+  const toggleKeepAwake = useCallback((enabled: boolean) => {
+    const previous = keepAwake;
+    setKeepAwakeState(enabled);
+    setWriteError(null);
+    void (async () => {
+      try {
+        await setKeepAwake(enabled);
+      } catch (err: unknown) {
+        setKeepAwakeState(previous);
+        setWriteError(err instanceof Error ? err.message : String(err));
+        return;
+      }
+
+      try {
+        await saveKeepAwake(enabled);
+      } catch (err: unknown) {
+        setWriteError(err instanceof Error ? err.message : String(err));
+      }
+      void emitNativeLevelsChanged({ keepAwake: enabled });
+    })();
+  }, [keepAwake]);
+
   return {
     status,
     error,
     writeError,
     nativeBrightnessSupported: caps?.nativeBrightness.supported ?? false,
     systemVolumeSupported: caps?.systemVolume.supported ?? false,
+    keepAwakeSupported: caps?.keepAwake.supported ?? false,
     nativeBrightnessUnavailableReason:
       caps?.nativeBrightness.unavailableReason ?? null,
     systemVolumeUnavailableReason: caps?.systemVolume.unavailableReason ?? null,
+    keepAwakeUnavailableReason: caps?.keepAwake.unavailableReason ?? null,
     nativeBrightness,
     systemVolume,
+    keepAwake,
     nativeBrightnessMax: caps?.nativeBrightness.maximum ?? DEFAULT_MAX,
     systemVolumeMax: caps?.systemVolume.maximum ?? DEFAULT_MAX,
     changeNativeBrightness,
     changeSystemVolume,
+    toggleKeepAwake,
   };
 }

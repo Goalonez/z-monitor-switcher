@@ -51,6 +51,7 @@ export interface LevelsChangedPayload {
 export interface NativeLevelsChangedPayload {
   nativeBrightness?: number;
   systemVolume?: number;
+  keepAwake?: boolean;
 }
 
 export interface InputChangedPayload {

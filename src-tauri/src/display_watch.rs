@@ -49,11 +49,8 @@ mod imp {
         ) -> i32;
     }
 
-    type CGDisplayReconfigurationCallBack = extern "C" fn(
-        display: CGDirectDisplayID,
-        flags: u32,
-        user_info: *mut std::ffi::c_void,
-    );
+    type CGDisplayReconfigurationCallBack =
+        extern "C" fn(display: CGDirectDisplayID, flags: u32, user_info: *mut std::ffi::c_void);
 
     extern "C" fn on_reconfigure(
         _display: CGDirectDisplayID,

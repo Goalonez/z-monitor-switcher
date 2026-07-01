@@ -1,4 +1,12 @@
-import { Loader2, MonitorCog, Sun, Volume2 } from "lucide-react";
+import {
+  Coffee,
+  Loader2,
+  MonitorCog,
+  Sparkles,
+  Sun,
+  type LucideIcon,
+  Volume2,
+} from "lucide-react";
 import { useNativeControls } from "@/hooks/useNativeControls";
 import { useI18n } from "@/lib/i18n";
 import { Slider } from "@/components/ui/slider";
@@ -6,9 +14,51 @@ import { cn } from "@/lib/utils";
 
 interface NativeControlsProps {
   compact?: boolean;
+  onCleanModeRequested?: () => void;
 }
 
-export function NativeControls({ compact = false }: NativeControlsProps) {
+interface ActionControlProps {
+  active?: boolean;
+  icon: LucideIcon;
+  label: string;
+  title: string;
+  className?: string;
+  onClick: () => void;
+}
+
+function ActionControl({
+  active = false,
+  icon: Icon,
+  label,
+  title,
+  className,
+  onClick,
+}: ActionControlProps) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      aria-label={title}
+      title={title}
+      onClick={onClick}
+      className={cn(
+        "inline-flex h-9 min-w-0 flex-1 items-center justify-center gap-2 rounded-md border px-3 text-sm font-medium shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+        active
+          ? "border-neutral-800 bg-neutral-900 text-white hover:bg-neutral-800"
+          : "border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground",
+        className,
+      )}
+    >
+      <Icon className="h-3.5 w-3.5 shrink-0" />
+      <span className="truncate">{label}</span>
+    </button>
+  );
+}
+
+export function NativeControls({
+  compact = false,
+  onCleanModeRequested,
+}: NativeControlsProps) {
   const { t } = useI18n();
   const controls = useNativeControls();
 
@@ -31,7 +81,10 @@ export function NativeControls({ compact = false }: NativeControlsProps) {
   }
 
   const hasControls =
-    controls.nativeBrightnessSupported || controls.systemVolumeSupported;
+    controls.nativeBrightnessSupported ||
+    controls.systemVolumeSupported ||
+    controls.keepAwakeSupported ||
+    Boolean(onCleanModeRequested);
 
   if (!hasControls) {
     return (
@@ -48,6 +101,9 @@ export function NativeControls({ compact = false }: NativeControlsProps) {
   }
 
   const sliderClassName = cn("min-w-0 flex-1", compact && "max-w-48");
+  const keepAwakeLabel = controls.keepAwake
+    ? t("keepAwakeOn")
+    : t("keepAwakeOff");
 
   return (
     <section className="space-y-3 rounded-lg border p-3">
@@ -90,10 +146,28 @@ export function NativeControls({ compact = false }: NativeControlsProps) {
           <span className="w-10 shrink-0 text-right text-sm tabular-nums text-muted-foreground">
             {controls.systemVolume ?? "—"}
           </span>
-          {!compact && (
-            <span className="w-28 shrink-0 text-xs text-muted-foreground">
-              {t("systemVolume")}
-            </span>
+        </div>
+      )}
+
+      {(controls.keepAwakeSupported || onCleanModeRequested) && (
+        <div className="grid grid-cols-2 gap-2">
+          {controls.keepAwakeSupported && (
+            <ActionControl
+              active={controls.keepAwake}
+              icon={Coffee}
+              label={t("keepAwake")}
+              title={keepAwakeLabel}
+              onClick={() => controls.toggleKeepAwake(!controls.keepAwake)}
+            />
+          )}
+          {onCleanModeRequested && (
+            <ActionControl
+              icon={Sparkles}
+              label={t("cleanMode")}
+              title={t("cleanMode")}
+              onClick={onCleanModeRequested}
+              className={cn(!controls.keepAwakeSupported && "col-span-2")}
+            />
           )}
         </div>
       )}

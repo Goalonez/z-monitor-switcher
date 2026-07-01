@@ -69,10 +69,7 @@ fn shutdown() -> Result<(), MonitorError> {
 #[cfg(windows)]
 fn sleep() -> Result<(), MonitorError> {
     // SetSuspendState(Hibernate=0, ForceCritical=1, DisableWakeEvent=0) → sleep.
-    run(
-        "rundll32.exe",
-        &["powrprof.dll,SetSuspendState", "0,1,0"],
-    )
+    run("rundll32.exe", &["powrprof.dll,SetSuspendState", "0,1,0"])
 }
 
 #[cfg(windows)]

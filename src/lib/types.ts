@@ -79,6 +79,13 @@ export interface NativeControlFeature {
   unavailableReason: string | null;
 }
 
+/** Mirror of Rust `NativeToggleFeature` for local-machine on/off controls. */
+export interface NativeToggleFeature {
+  supported: boolean;
+  enabled: boolean;
+  unavailableReason: string | null;
+}
+
 /**
  * Local-machine controls shown once in the app, independent from DDC monitor
  * cards. macOS supports system volume only; Windows supports native panel
@@ -87,6 +94,7 @@ export interface NativeControlFeature {
 export interface NativeControlCapabilities {
   nativeBrightness: NativeControlFeature;
   systemVolume: NativeControlFeature;
+  keepAwake: NativeToggleFeature;
 }
 
 /**

@@ -1,3 +1,4 @@
+mod clean_mode;
 mod display_watch;
 mod monitor;
 mod native_control;
@@ -109,6 +110,27 @@ fn set_system_volume(value: u16) -> Result<(), MonitorError> {
     native_control::set_system_volume(value)
 }
 
+/// macOS: prevent idle display sleep while enabled so clamshell/KVM workflows
+/// can be re-taken-over through an external display hub. Unsupported elsewhere.
+#[tauri::command]
+fn set_keep_awake(enabled: bool) -> Result<(), MonitorError> {
+    native_control::set_keep_awake(enabled)
+}
+
+/// macOS: promote cleaning-mode overlay windows to a native screen-level mode
+/// so they cover the menu bar while the mode is active. No-op elsewhere.
+#[tauri::command]
+fn begin_clean_mode(app: tauri::AppHandle, labels: Vec<String>) -> Result<(), MonitorError> {
+    clean_mode::begin(&app, labels)
+}
+
+/// Restore any native state changed by `begin_clean_mode`. Best-effort because
+/// cleanup must also run during error recovery / window teardown.
+#[tauri::command]
+fn end_clean_mode(app: tauri::AppHandle) {
+    clean_mode::end(&app);
+}
+
 /// Execute a KVM post-switch action (sleep / shutdown) on THIS machine (R11).
 ///
 /// SAFETY: sleep / shutdown are irreversible and can lose unsaved work, so the
@@ -135,6 +157,7 @@ fn open_url(app: tauri::AppHandle, url: String) -> Result<(), String> {
 /// The window close button only hides to tray, so this is the explicit exit.
 #[tauri::command]
 fn quit_app(app: tauri::AppHandle) {
+    native_control::release_keep_awake();
     app.exit(0);
 }
 
@@ -235,6 +258,9 @@ pub fn run() {
             probe_native_controls,
             set_native_brightness,
             set_system_volume,
+            set_keep_awake,
+            begin_clean_mode,
+            end_clean_mode,
             run_post_action,
             open_url,
             quit_app,
@@ -255,6 +281,9 @@ pub fn run() {
                     let _ = w.unminimize();
                     let _ = w.set_focus();
                 }
+            }
+            if let tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit = event {
+                native_control::release_keep_awake();
             }
             // Silence unused warnings on non-macOS builds.
             let _ = (app, &event);

@@ -10,7 +10,7 @@ use std::process::Command;
 
 use crate::monitor::MonitorError;
 
-use super::{clamp_percent, NativeControlCapabilities, NativeControlFeature};
+use super::{clamp_percent, NativeControlCapabilities, NativeControlFeature, NativeToggleFeature};
 
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 
@@ -27,6 +27,7 @@ pub fn probe() -> Result<NativeControlCapabilities, MonitorError> {
     Ok(NativeControlCapabilities {
         native_brightness,
         system_volume,
+        keep_awake: NativeToggleFeature::unavailable("keep awake is only supported on macOS"),
     })
 }
 
@@ -36,6 +37,12 @@ pub fn set_native_brightness(value: u16) -> Result<(), MonitorError> {
 
 pub fn set_system_volume(value: u16) -> Result<(), MonitorError> {
     set_volume(clamp_percent(value)).map_err(MonitorError::NativeControl)
+}
+
+pub fn set_keep_awake(_: bool) -> Result<(), MonitorError> {
+    Err(MonitorError::NativeControl(
+        "keep awake is only supported on macOS".into(),
+    ))
 }
 
 fn get_native_brightness() -> Result<u16, String> {

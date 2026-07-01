@@ -5611,9 +5611,11 @@ dependencies = [
 name = "z-monitor-switcher"
 version = "0.1.5"
 dependencies = [
+ "core-foundation",
  "core-graphics 0.24.0",
  "ddc",
  "ddc-macos",
+ "objc2-app-kit",
  "serde",
  "serde_json",
  "tauri",

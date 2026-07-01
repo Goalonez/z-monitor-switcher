@@ -4,7 +4,9 @@ import { setInput } from "@/lib/api";
 import {
   defaultConfig,
   loadConfig,
+  loadLastInput,
   saveConfig,
+  saveLastInput,
   type MonitorInputConfig,
 } from "@/lib/store";
 import { clonePresetSources } from "@/lib/presets";
@@ -68,8 +70,13 @@ export function useMonitorInput(
 
   useEffect(() => {
     let cancelled = false;
-    loadConfig(monitor).then((loaded) => {
-      if (!cancelled) setConfig(loaded);
+    Promise.all([
+      loadConfig(monitor),
+      loadLastInput(monitor).catch(() => null),
+    ]).then(([loaded, lastInput]) => {
+      if (cancelled) return;
+      setConfig(loaded);
+      setActiveValue(lastInput);
     });
     return () => {
       cancelled = true;
@@ -141,6 +148,7 @@ export function useMonitorInput(
 
       setInput(monitor.id, value)
         .then(() => {
+          void saveLastInput(monitor, value).catch(() => {});
           setStatus("idle");
         })
         .catch((err: unknown) => {
@@ -151,11 +159,18 @@ export function useMonitorInput(
           setStatus("error");
         });
     },
-    [activeValue, monitor.id],
+    [activeValue, monitor],
   );
 
   const switchTo = useCallback(
     (value: number) => {
+      // Some monitors re-negotiate even when writing the already-active input.
+      // A no-op here avoids blanking clamshell Macs on same-source clicks.
+      if (activeValue === value) {
+        setStatus("idle");
+        setError(null);
+        return;
+      }
       if (!onSwitchRequested) {
         performSwitch(value);
         return;
@@ -169,7 +184,7 @@ export function useMonitorInput(
           setStatus("error");
         });
     },
-    [onSwitchRequested, performSwitch],
+    [activeValue, onSwitchRequested, performSwitch],
   );
 
   const applyPreset = useCallback(

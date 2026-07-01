@@ -34,11 +34,40 @@ impl NativeControlFeature {
         }
     }
 
+    #[allow(dead_code)]
     pub fn unavailable(reason: impl Into<String>) -> Self {
         Self {
             supported: false,
             current: None,
             maximum: 100,
+            unavailable_reason: Some(reason.into()),
+        }
+    }
+}
+
+/// Capability plus current enabled state for a local on/off native control.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NativeToggleFeature {
+    pub supported: bool,
+    pub enabled: bool,
+    pub unavailable_reason: Option<String>,
+}
+
+impl NativeToggleFeature {
+    pub fn supported(enabled: bool) -> Self {
+        Self {
+            supported: true,
+            enabled,
+            unavailable_reason: None,
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn unavailable(reason: impl Into<String>) -> Self {
+        Self {
+            supported: false,
+            enabled: false,
             unavailable_reason: Some(reason.into()),
         }
     }
@@ -51,6 +80,7 @@ impl NativeControlFeature {
 pub struct NativeControlCapabilities {
     pub native_brightness: NativeControlFeature,
     pub system_volume: NativeControlFeature,
+    pub keep_awake: NativeToggleFeature,
 }
 
 pub fn probe() -> Result<NativeControlCapabilities, MonitorError> {
@@ -100,13 +130,36 @@ pub fn set_system_volume(value: u16) -> Result<(), MonitorError> {
     }
 }
 
+pub fn set_keep_awake(enabled: bool) -> Result<(), MonitorError> {
+    #[cfg(target_os = "macos")]
+    {
+        macos::set_keep_awake(enabled)
+    }
+    #[cfg(windows)]
+    {
+        windows::set_keep_awake(enabled)
+    }
+    #[cfg(not(any(target_os = "macos", windows)))]
+    {
+        let _ = enabled;
+        unsupported::set_keep_awake()
+    }
+}
+
+pub fn release_keep_awake() {
+    #[cfg(target_os = "macos")]
+    {
+        macos::release_keep_awake();
+    }
+}
+
 fn clamp_percent(value: u16) -> u16 {
     value.min(100)
 }
 
 #[cfg(not(any(target_os = "macos", windows)))]
 mod unsupported {
-    use super::{NativeControlCapabilities, NativeControlFeature};
+    use super::{NativeControlCapabilities, NativeControlFeature, NativeToggleFeature};
     use crate::monitor::MonitorError;
 
     pub fn probe() -> NativeControlCapabilities {
@@ -116,6 +169,9 @@ mod unsupported {
             ),
             system_volume: NativeControlFeature::unavailable(
                 "system volume is not supported on this platform",
+            ),
+            keep_awake: NativeToggleFeature::unavailable(
+                "keep awake is not supported on this platform",
             ),
         }
     }
@@ -129,6 +185,12 @@ mod unsupported {
     pub fn set_system_volume() -> Result<(), MonitorError> {
         Err(MonitorError::NativeControl(
             "system volume is not supported on this platform".into(),
+        ))
+    }
+
+    pub fn set_keep_awake() -> Result<(), MonitorError> {
+        Err(MonitorError::NativeControl(
+            "keep awake is not supported on this platform".into(),
         ))
     }
 }

@@ -110,6 +110,7 @@ export async function saveConfig(
  */
 const LAST_BRIGHTNESS_PREFIX = "__lastBrightness::";
 const LAST_VOLUME_PREFIX = "__lastVolume::";
+const LAST_INPUT_PREFIX = "__lastInput::";
 
 export async function loadLastLevels(
   monitor: MonitorInfo,
@@ -138,6 +139,40 @@ export async function saveLastVolume(
 ): Promise<void> {
   const store = await getStore();
   await store.set(`${LAST_VOLUME_PREFIX}${monitorKey(monitor)}`, value);
+  await store.save();
+}
+
+export async function loadLastInput(
+  monitor: MonitorInfo,
+): Promise<number | null> {
+  const store = await getStore();
+  return (
+    (await store.get<number>(`${LAST_INPUT_PREFIX}${monitorKey(monitor)}`)) ??
+    null
+  );
+}
+
+export async function saveLastInput(
+  monitor: MonitorInfo,
+  value: number,
+): Promise<void> {
+  const store = await getStore();
+  await store.set(`${LAST_INPUT_PREFIX}${monitorKey(monitor)}`, value);
+  await store.save();
+}
+
+// --- Keep awake -------------------------------------------------------------
+
+const KEEP_AWAKE_KEY = "__keepAwake";
+
+export async function loadKeepAwake(): Promise<boolean> {
+  const store = await getStore();
+  return (await store.get<boolean>(KEEP_AWAKE_KEY)) ?? false;
+}
+
+export async function saveKeepAwake(enabled: boolean): Promise<void> {
+  const store = await getStore();
+  await store.set(KEEP_AWAKE_KEY, enabled);
   await store.save();
 }
 

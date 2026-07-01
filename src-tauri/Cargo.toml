@@ -49,6 +49,11 @@ tauri-plugin-process = "2"
 ddc-macos = "0.2.2"
 ddc = "0.2"
 core-graphics = "0.24"
+core-foundation = "0.10"
+objc2-app-kit = { version = "0.3", default-features = false, features = [
+    "std",
+    "NSWindow",
+] }
 
 # Windows: call the documented dxva2.dll Monitor Configuration API directly.
 # NOTE: this path cannot be compiled/verified on macOS (expected); correctness

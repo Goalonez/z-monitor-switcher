@@ -5,15 +5,24 @@
 //! built-in output devices when available so a connected external monitor with
 //! non-settable HDMI/DP audio does not hide the MacBook speaker volume control.
 
+use std::ffi::{c_char, c_void, CString};
+use std::sync::{Mutex, OnceLock};
+
 use crate::monitor::MonitorError;
 
-use super::{clamp_percent, NativeControlCapabilities, NativeControlFeature};
+use super::{clamp_percent, NativeControlCapabilities, NativeControlFeature, NativeToggleFeature};
 
 type AudioObjectId = u32;
 type AudioObjectPropertySelector = u32;
 type AudioObjectPropertyScope = u32;
 type AudioObjectPropertyElement = u32;
 type OsStatus = i32;
+type IoReturn = i32;
+type IOPMAssertionId = u32;
+type IOPMAssertionLevel = u32;
+type CFStringRef = *const c_void;
+type CFAllocatorRef = *const c_void;
+type CFStringEncoding = u32;
 
 #[repr(C)]
 struct AudioObjectPropertyAddress {
@@ -34,6 +43,13 @@ const AUDIO_DEVICE_PROPERTY_VOLUME_SCALAR: u32 = fourcc(*b"volm");
 const AUDIO_DEVICE_TRANSPORT_TYPE_BUILT_IN: u32 = fourcc(*b"bltn");
 
 const VOLUME_ELEMENTS: [u32; 3] = [AUDIO_OBJECT_PROPERTY_ELEMENT_MAIN, 1, 2];
+const IO_RETURN_SUCCESS: IoReturn = 0;
+const IOPM_ASSERTION_LEVEL_ON: IOPMAssertionLevel = 255;
+const CF_STRING_ENCODING_UTF8: CFStringEncoding = 0x0800_0100;
+const KEEP_AWAKE_ASSERTION_TYPE: &str = "PreventUserIdleDisplaySleep";
+const KEEP_AWAKE_ASSERTION_NAME: &str = "Z Monitor Switcher keep awake";
+
+static KEEP_AWAKE_ASSERTION: OnceLock<Mutex<Option<IOPMAssertionId>>> = OnceLock::new();
 
 #[link(name = "CoreAudio", kind = "framework")]
 extern "C" {
@@ -71,6 +87,27 @@ extern "C" {
     ) -> OsStatus;
 }
 
+#[link(name = "IOKit", kind = "framework")]
+extern "C" {
+    fn IOPMAssertionCreateWithName(
+        assertion_type: CFStringRef,
+        assertion_level: IOPMAssertionLevel,
+        assertion_name: CFStringRef,
+        assertion_id: *mut IOPMAssertionId,
+    ) -> IoReturn;
+    fn IOPMAssertionRelease(assertion_id: IOPMAssertionId) -> IoReturn;
+}
+
+#[link(name = "CoreFoundation", kind = "framework")]
+extern "C" {
+    fn CFStringCreateWithCString(
+        alloc: CFAllocatorRef,
+        c_str: *const c_char,
+        encoding: CFStringEncoding,
+    ) -> CFStringRef;
+    fn CFRelease(cf: *const c_void);
+}
+
 pub fn probe() -> Result<NativeControlCapabilities, MonitorError> {
     let system_volume = match coreaudio_get_volume() {
         Ok(value) => NativeControlFeature::supported(Some(value)),
@@ -87,6 +124,7 @@ pub fn probe() -> Result<NativeControlCapabilities, MonitorError> {
             "macOS built-in display brightness is not supported",
         ),
         system_volume,
+        keep_awake: NativeToggleFeature::supported(is_keep_awake_enabled()),
     })
 }
 
@@ -99,6 +137,101 @@ pub fn set_native_brightness(_: u16) -> Result<(), MonitorError> {
 pub fn set_system_volume(value: u16) -> Result<(), MonitorError> {
     let value = clamp_percent(value);
     coreaudio_set_volume(value).map_err(|e| MonitorError::NativeControl(e.to_string()))
+}
+
+pub fn set_keep_awake(enabled: bool) -> Result<(), MonitorError> {
+    if enabled {
+        enable_keep_awake()
+    } else {
+        disable_keep_awake()
+    }
+    .map_err(MonitorError::NativeControl)
+}
+
+pub fn release_keep_awake() {
+    let _ = disable_keep_awake();
+}
+
+fn keep_awake_assertion() -> &'static Mutex<Option<IOPMAssertionId>> {
+    KEEP_AWAKE_ASSERTION.get_or_init(|| Mutex::new(None))
+}
+
+fn is_keep_awake_enabled() -> bool {
+    keep_awake_assertion()
+        .lock()
+        .map(|assertion| assertion.is_some())
+        .unwrap_or(false)
+}
+
+fn enable_keep_awake() -> Result<(), String> {
+    let mut assertion = keep_awake_assertion()
+        .lock()
+        .map_err(|_| "keep awake assertion state is unavailable".to_string())?;
+    if assertion.is_some() {
+        return Ok(());
+    }
+
+    let assertion_type = CfString::new(KEEP_AWAKE_ASSERTION_TYPE)?;
+    let assertion_name = CfString::new(KEEP_AWAKE_ASSERTION_NAME)?;
+    let mut assertion_id = 0;
+    let status = unsafe {
+        IOPMAssertionCreateWithName(
+            assertion_type.as_ref(),
+            IOPM_ASSERTION_LEVEL_ON,
+            assertion_name.as_ref(),
+            &mut assertion_id,
+        )
+    };
+    if status != IO_RETURN_SUCCESS {
+        return Err(format!("failed to create keep awake assertion ({status})"));
+    }
+    if assertion_id == 0 {
+        return Err("keep awake assertion returned an empty id".into());
+    }
+    *assertion = Some(assertion_id);
+    Ok(())
+}
+
+fn disable_keep_awake() -> Result<(), String> {
+    let mut assertion = keep_awake_assertion()
+        .lock()
+        .map_err(|_| "keep awake assertion state is unavailable".to_string())?;
+    let Some(assertion_id) = assertion.take() else {
+        return Ok(());
+    };
+
+    let status = unsafe { IOPMAssertionRelease(assertion_id) };
+    if status != IO_RETURN_SUCCESS {
+        *assertion = Some(assertion_id);
+        return Err(format!("failed to release keep awake assertion ({status})"));
+    }
+    Ok(())
+}
+
+struct CfString(CFStringRef);
+
+impl CfString {
+    fn new(value: &str) -> Result<Self, String> {
+        let value = CString::new(value).map_err(|_| "invalid CoreFoundation string".to_string())?;
+        let ptr = unsafe {
+            CFStringCreateWithCString(std::ptr::null(), value.as_ptr(), CF_STRING_ENCODING_UTF8)
+        };
+        if ptr.is_null() {
+            Err("failed to create CoreFoundation string".into())
+        } else {
+            Ok(Self(ptr))
+        }
+    }
+
+    fn as_ref(&self) -> CFStringRef {
+        self.0
+    }
+}
+
+impl Drop for CfString {
+    fn drop(&mut self) {
+        unsafe { CFRelease(self.0) };
+    }
 }
 
 fn coreaudio_get_volume() -> Result<u16, String> {

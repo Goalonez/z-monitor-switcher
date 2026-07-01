@@ -14,6 +14,7 @@ import {
   TRAY_CONTROLS_INITIAL_SIZE_EVENT,
 } from "@/lib/tray";
 import { quitApp } from "@/lib/api";
+import { showCleanMode } from "@/lib/cleanMode";
 import { emitInputSwitchRequested } from "@/lib/events";
 import { loadKvmConfig } from "@/lib/store";
 import {
@@ -180,7 +181,14 @@ export function TrayControlsWindow() {
           </>
         )}
 
-        <NativeControls compact />
+        <NativeControls
+          compact
+          onCleanModeRequested={() => {
+            void showCleanMode()
+              .then(() => getCurrentWindow().hide())
+              .catch(() => {});
+          }}
+        />
 
         <div className="flex items-center gap-2 border-t pt-3">
           <Button
