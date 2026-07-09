@@ -50,15 +50,12 @@ Do not run this command against the entire `/Applications/` directory.
 sudo apt install ./Z-Monitor-Switcher.deb
 ```
 
-3. If external monitors are not listed, enable I2C devices and grant your user access to `/dev/i2c-*`:
+3. If external monitors are not listed, grant your user access to `/dev/i2c-*`:
 
 ```bash
-sudo apt install i2c-tools
-sudo modprobe i2c-dev
-echo i2c-dev | sudo tee /etc/modules-load.d/i2c-dev.conf
 sudo groupadd --system i2c 2>/dev/null || true
 sudo usermod -aG i2c "$USER"
-echo 'KERNEL=="i2c-[0-9]*", GROUP="i2c", MODE="0660"' | sudo tee /etc/udev/rules.d/45-i2c-tools.rules
+echo 'KERNEL=="i2c-[0-9]*", GROUP="i2c", MODE="0660"' | sudo tee /etc/udev/rules.d/45-i2c.rules
 sudo udevadm control --reload-rules
 sudo udevadm trigger
 ```
