@@ -48,9 +48,12 @@ export function AdjustControls({
   }
 
   if (layout === "vertical") {
+    const verticalColumnClass =
+      "grid grid-rows-[1.25rem_7rem_1.25rem_1rem] justify-items-center gap-2";
+
     return (
       <div className="grid grid-cols-2 gap-3 border-t pt-4">
-        <div className="flex flex-col items-center gap-2">
+        <div className={verticalColumnClass}>
           <Sun className="h-5 w-5 text-muted-foreground" />
           <Slider
             orientation="vertical"
@@ -66,7 +69,7 @@ export function AdjustControls({
           <span className="text-xs text-muted-foreground">{t("brightness")}</span>
         </div>
 
-        <div className="flex flex-col items-center gap-2">
+        <div className={verticalColumnClass}>
           <Volume2 className="h-5 w-5 text-muted-foreground" />
           {volumeSupported ? (
             <>
@@ -83,7 +86,7 @@ export function AdjustControls({
               </span>
             </>
           ) : (
-            <div className="flex h-28 items-center px-2 text-center text-xs text-muted-foreground">
+            <div className="row-span-2 flex h-full items-center px-2 text-center text-xs text-muted-foreground">
               {error ? t("volumeUnavailable") : t("volumeUnsupported")}
             </div>
           )}

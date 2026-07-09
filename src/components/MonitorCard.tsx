@@ -64,11 +64,6 @@ export function MonitorCard({
         )}
       </CardHeader>
       <CardContent className="space-y-2 p-3 pt-0 text-sm text-muted-foreground">
-        {monitor.manufacturer && (
-          <div className="text-xs">
-            {t("manufacturer")}：{monitor.manufacturer}
-          </div>
-        )}
         {!supported && monitor.unsupportedReason && (
           <div className="text-destructive">{monitor.unsupportedReason}</div>
         )}

@@ -3,6 +3,7 @@ import { defaultWindowIcon } from "@tauri-apps/api/app";
 import { listen } from "@tauri-apps/api/event";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { Image } from "@tauri-apps/api/image";
+import { Menu } from "@tauri-apps/api/menu";
 import {
   PhysicalPosition,
   Window,
@@ -12,7 +13,8 @@ import {
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import type { TrayIconEvent } from "@tauri-apps/api/tray";
 import menubarIconUrl from "@/assets/menubar_logo.png";
-import { getOs } from "@/lib/api";
+import { getOs, quitApp } from "@/lib/api";
+import { translate } from "@/lib/i18n";
 
 /**
  * System-tray / menu-bar integration.
@@ -253,6 +255,36 @@ async function showTrayControls(event?: TrayIconEvent): Promise<void> {
   await controls.setFocus().catch(() => {});
 }
 
+async function createTrayMenu(os: string): Promise<Menu | undefined> {
+  if (os === "macos") return undefined;
+
+  return Menu.new({
+    items: [
+      {
+        id: "controls",
+        text: translate("controls"),
+        action: () => {
+          void showTrayControls().catch(() => {});
+        },
+      },
+      {
+        id: "show-window",
+        text: translate("showWindow"),
+        action: () => {
+          void showMainWindow().catch(() => {});
+        },
+      },
+      {
+        id: "quit",
+        text: translate("quit"),
+        action: () => {
+          void quitApp().catch(() => {});
+        },
+      },
+    ],
+  });
+}
+
 /**
  * Toggle the panel from a tray-icon click: if it exists and is visible, retract
  * (hide) it; otherwise show + position it. Focus-loss auto-dismissal records a
@@ -300,6 +332,10 @@ export async function setupTray(): Promise<void> {
     // scaling the macOS template asset in the tray can leave dark edge artifacts.
     const os = await getOs().catch(() => "unknown");
     const useTemplateIcon = os === "macos";
+    const menu = await createTrayMenu(os).catch((err) => {
+      console.error("tray menu creation failed", err);
+      return undefined;
+    });
     let icon: Image | null;
     try {
       if (useTemplateIcon) {
@@ -316,14 +352,16 @@ export async function setupTray(): Promise<void> {
     }
     await TrayIcon.new({
       id: TRAY_ID,
+      menu,
       icon: icon ?? undefined,
       // Render only the macOS logo as a monochrome "template" so it auto-adapts
       // to light/dark menu bars like other menu-bar apps.
       iconAsTemplate: useTemplateIcon,
       tooltip: "Z Monitor Switcher",
-      // No native menu is attached; make left-click delivery unambiguous on
-      // macOS (a menu would make the OS swallow the click `action` event).
-      showMenuOnLeftClick: false,
+      // macOS has no native menu so left-click delivery stays unambiguous. On
+      // Linux, tray click events are not emitted and the menu is the reliable
+      // entry point; `showMenuOnLeftClick` is unsupported there but harmless.
+      showMenuOnLeftClick: os === "linux",
       action: (event) => {
         const leftClickUp =
           event.type === "Click" &&

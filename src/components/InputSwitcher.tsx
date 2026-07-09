@@ -29,6 +29,12 @@ interface InputSwitcherProps {
   onSwitchRequested?: (value: number) => Promise<boolean>;
 }
 
+type RecordingSession = {
+  index: number;
+  phase: "starting" | "recording";
+  token: number;
+};
+
 /**
  * Per-monitor input-source controls: quick-switch buttons (optimistic), a
  * preset selector, and an editable mapping table. Reflects the full state
@@ -54,50 +60,92 @@ export function InputSwitcher({
     resetSources,
   } = useMonitorInput(monitor, { onSwitchRequested });
   const { t } = useI18n();
-  const [recordingIndex, setRecordingIndex] = useState<number | null>(null);
+  const [recording, setRecording] = useState<RecordingSession | null>(null);
   const [recordingHotkeyError, setRecordingHotkeyError] = useState<
     string | null
   >(null);
   const recordButtonRef = useRef<HTMLButtonElement>(null);
   const hotkeySuspendPromiseRef = useRef<Promise<void>>(Promise.resolve());
+  const recordingTokenRef = useRef(0);
   const enabledSources = config.sources.filter((source) => source.enabled);
   const visibleConfigError = configError ?? recordingHotkeyError;
+  const recordingIndex = recording?.index ?? null;
 
-  const restoreConfiguredHotkeys = useCallback(() => {
+  const restoreConfiguredHotkeys = useCallback((token: number) => {
     void hotkeySuspendPromiseRef.current
-      .then(() => applyConfiguredHotkeys())
-      .then((hotkeyError) => setRecordingHotkeyError(hotkeyError))
+      .then(() => {
+        if (recordingTokenRef.current !== token) return undefined;
+        return applyConfiguredHotkeys();
+      })
+      .then((hotkeyError) => {
+        if (recordingTokenRef.current === token && hotkeyError !== undefined) {
+          setRecordingHotkeyError(hotkeyError);
+        }
+      })
       .catch((err: unknown) => {
-        setRecordingHotkeyError(
-          err instanceof Error ? err.message : String(err),
-        );
+        if (recordingTokenRef.current === token) {
+          setRecordingHotkeyError(
+            err instanceof Error ? err.message : String(err),
+          );
+        }
       });
   }, []);
 
-  useEffect(() => {
-    if (recordingIndex === null) return;
+  const cancelRecording = useCallback(() => {
+    const token = recordingTokenRef.current + 1;
+    recordingTokenRef.current = token;
+    setRecording(null);
+    restoreConfiguredHotkeys(token);
+  }, [restoreConfiguredHotkeys]);
+
+  const finishRecording = useCallback(() => {
+    recordingTokenRef.current += 1;
+    setRecording(null);
+  }, []);
+
+  const startRecording = useCallback((index: number) => {
+    const token = recordingTokenRef.current + 1;
+    recordingTokenRef.current = token;
     setRecordingHotkeyError(null);
-    hotkeySuspendPromiseRef.current = clearHotkeys().catch((err: unknown) => {
-      setRecordingHotkeyError(err instanceof Error ? err.message : String(err));
+    setRecording({ index, phase: "starting", token });
+
+    const suspendPromise = clearHotkeys().catch((err: unknown) => {
+      if (recordingTokenRef.current === token) {
+        setRecordingHotkeyError(
+          err instanceof Error ? err.message : String(err),
+        );
+      }
     });
+    hotkeySuspendPromiseRef.current = suspendPromise;
+
+    void suspendPromise.then(() => {
+      if (recordingTokenRef.current === token) {
+        setRecording({ index, phase: "recording", token });
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!recording) return;
 
     const handleKeyDown = (event: KeyboardEvent) => {
       event.preventDefault();
       event.stopPropagation();
       if (event.key === "Escape") {
-        restoreConfiguredHotkeys();
-        setRecordingIndex(null);
+        cancelRecording();
         return;
       }
+      if (recording.phase !== "recording") return;
+      if (event.repeat) return;
       if (event.key === "Backspace" || event.key === "Delete") {
-        updateSource(recordingIndex, { accelerator: "" });
-        setRecordingIndex(null);
+        updateSource(recording.index, { accelerator: "" });
+        finishRecording();
         return;
       }
       const accelerator = acceleratorFromEvent(event);
       if (!accelerator) return;
-      updateSource(recordingIndex, { accelerator });
-      setRecordingIndex(null);
+      updateSource(recording.index, { accelerator });
+      finishRecording();
     };
 
     // Clicking anywhere outside the active record button cancels recording;
@@ -105,8 +153,7 @@ export function InputSwitcher({
     const handlePointerDown = (event: MouseEvent) => {
       const button = recordButtonRef.current;
       if (button && button.contains(event.target as Node)) return;
-      restoreConfiguredHotkeys();
-      setRecordingIndex(null);
+      cancelRecording();
     };
 
     window.addEventListener("keydown", handleKeyDown, true);
@@ -115,14 +162,13 @@ export function InputSwitcher({
       window.removeEventListener("keydown", handleKeyDown, true);
       document.removeEventListener("mousedown", handlePointerDown, true);
     };
-  }, [recordingIndex, restoreConfiguredHotkeys, updateSource]);
+  }, [cancelRecording, finishRecording, recording, updateSource]);
 
   useEffect(() => {
-    if (!manageOpen && recordingIndex !== null) {
-      restoreConfiguredHotkeys();
-      setRecordingIndex(null);
+    if (!manageOpen && recording) {
+      cancelRecording();
     }
-  }, [manageOpen, recordingIndex, restoreConfiguredHotkeys]);
+  }, [cancelRecording, manageOpen, recording]);
 
   return (
     <div className="space-y-3 border-t pt-3">
@@ -201,7 +247,14 @@ export function InputSwitcher({
             </div>
 
             <div className="space-y-2 overflow-y-auto p-4">
-              {config.sources.map((source, index) => (
+              {config.sources.map((source, index) => {
+                const isActiveRecorder = recordingIndex === index;
+                const isStartingRecorder =
+                  isActiveRecorder && recording?.phase === "starting";
+                const isReadyRecorder =
+                  isActiveRecorder && recording?.phase === "recording";
+
+                return (
                 <div
                   key={index}
                   className="grid grid-cols-[auto_minmax(5.5rem,7rem)_4rem_minmax(8rem,1fr)_auto_auto] items-center gap-2 rounded-md border p-2"
@@ -238,23 +291,27 @@ export function InputSwitcher({
                     }}
                   />
                   <Button
-                    ref={recordingIndex === index ? recordButtonRef : undefined}
-                    variant={recordingIndex === index ? "secondary" : "outline"}
+                    ref={isActiveRecorder ? recordButtonRef : undefined}
+                    variant={isActiveRecorder ? "secondary" : "outline"}
                     size="sm"
                     className="min-w-0 px-2"
+                    disabled={isStartingRecorder}
                     onClick={() => {
-                      if (recordingIndex === index) {
-                        restoreConfiguredHotkeys();
-                        setRecordingIndex(null);
+                      if (isActiveRecorder) {
+                        cancelRecording();
                         return;
                       }
-                      setRecordingIndex(index);
+                      startRecording(index);
                     }}
                     title={t("setShortcut")}
                   >
-                    <Keyboard className="h-3.5 w-3.5 shrink-0" />
+                    {isStartingRecorder ? (
+                      <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
+                    ) : (
+                      <Keyboard className="h-3.5 w-3.5 shrink-0" />
+                    )}
                     <span className="min-w-0">
-                      {recordingIndex === index
+                      {isReadyRecorder
                         ? t("pressShortcut")
                         : displayAccelerator(source.accelerator) || t("shortcut")}
                     </span>
@@ -280,7 +337,8 @@ export function InputSwitcher({
                     <Trash2 className="h-3.5 w-3.5" />
                   </Button>
                 </div>
-              ))}
+                );
+              })}
             </div>
 
             <div className="space-y-2 border-t px-4 py-3">
