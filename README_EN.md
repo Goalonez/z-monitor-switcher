@@ -65,7 +65,7 @@ sudo udevadm trigger
 
 Log out and back in after changing group membership. DDC/CI must also be enabled in the monitor OSD menu.
 
-**Requirements**: Ubuntu 26.04 target support, pending final real-machine smoke testing. The first Linux release ships a `.deb` installer and updater tarball, but no AppImage release asset.
+**Requirements**: Ubuntu 26.04 or a compatible Linux desktop environment.
 
 ## 🚀 Quick Start
 
@@ -115,11 +115,10 @@ Log out and back in after changing group membership. DDC/CI must also be enabled
 - ⚠️ With multiple monitors, device order may change after restart
 
 **Linux / Ubuntu**
-- ⚠️ The first Linux support target is Ubuntu 26.04 and still needs final real-machine smoke testing
+- ⚠️ Linux support is primarily targeted at Ubuntu 26.04; other distributions may require dependency and permission checks
 - ⚠️ DDC access depends on kernel I2C devices and user permissions; Wayland/X11 permissions do not replace `/dev/i2c-*` access
 - ⚠️ Hot-plug auto-refresh is not implemented yet; use the manual refresh action after monitor changes
 - ⚠️ The tray must remain enabled on Linux so the app is still reachable after closing the window
-- ⚠️ AppImage is not published as a user-facing asset for the first Linux release
 
 **General Limitations**
 - Input source values (VCP 0x60) vary by monitor brand and model; manual configuration required
@@ -175,29 +174,6 @@ On Linux, DDC/CI is usually accessed through `/dev/i2c-*` devices. The app is no
 - If it still cannot open, run the `xattr` fallback only for `"/Applications/Z Monitor Switcher.app"`, not the entire `/Applications/` directory
 - Windows: Select "Run anyway" in SmartScreen warning
 </details>
-
-## 🛠️ Development & Release
-
-```bash
-pnpm install
-pnpm run tauri dev
-pnpm run typecheck
-pnpm run build
-```
-
-Release flow:
-
-1. Finish development on `dev`, then squash-merge into `main`.
-2. Keep versions aligned in `package.json`, `src-tauri/tauri.conf.json`, and `src-tauri/Cargo.toml`.
-3. Add bilingual release notes for the version, for example `docs/releases/v0.1.0.md`.
-4. Before release, inspect tracked and ignored files:
-
-```bash
-git status --short
-git status --ignored --short
-```
-
-Do not commit local AI/Trellis config, build outputs, dependency directories, certificates, keys, or environment files. Official release installers are produced only by GitHub Actions; after pushing a `vX.Y.Z` tag that points to a `main` commit, GitHub Actions builds `Z-Monitor-Switcher.dmg`, the Windows NSIS installer `Z-Monitor-Switcher.exe`, and the Linux installer `Z-Monitor-Switcher.deb`, then creates the Release. Linux updater metadata points to `Z-Monitor-Switcher-linux-x86_64.tar.gz` in `latest.json`; AppImage is only an intermediate artifact used by Tauri to generate that updater tarball and is not published as a Release asset. Asset filenames do not include the version; the Release tag carries it. Do not upload local build outputs to a Release.
 
 ## 📄 License
 

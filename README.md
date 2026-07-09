@@ -65,7 +65,7 @@ sudo udevadm trigger
 
 完成后注销并重新登录。显示器 OSD 菜单中也需要开启 DDC/CI。
 
-**系统要求**：Ubuntu 26.04 目标支持，当前需要实机 smoke test 确认。首个 Linux 版本发布 `.deb` 安装包和 updater tarball，不发布 AppImage。
+**系统要求**：Ubuntu 26.04 或兼容的 Linux 桌面环境。
 
 ## 🚀 快速开始
 
@@ -115,11 +115,10 @@ sudo udevadm trigger
 - ⚠️ 多显示器时，重启后设备顺序可能变化
 
 **Linux / Ubuntu**
-- ⚠️ 首个 Linux 支持目标是 Ubuntu 26.04，仍需要真实机器完成最终 smoke test
+- ⚠️ Linux 支持以 Ubuntu 26.04 为主要目标，其他发行版可能需要自行确认依赖和权限
 - ⚠️ DDC 访问依赖内核 I2C 设备和用户权限，Wayland/X11 本身不能替代 `/dev/i2c-*` 权限
 - ⚠️ 热插拔暂不自动刷新，连接变化后请在应用中手动刷新显示器列表
 - ⚠️ 托盘在 Linux 上必须保持开启，避免窗口关闭后无法找回应用
-- ⚠️ AppImage 不作为首个 Linux 版本的用户发布资产
 
 **通用限制**
 - 输入源的数值（VCP 0x60）因显示器品牌和型号而异，需要自行配置
@@ -175,29 +174,6 @@ DDC/CI 在 Linux 上通常通过 `/dev/i2c-*` 设备访问。应用不会要求 
 - 如仍无法打开，仅对 `"/Applications/Z Monitor Switcher.app"` 执行 `xattr` 备用命令，不要作用于整个 `/Applications/` 目录
 - Windows：在 SmartScreen 警告中选择"仍要运行"
 </details>
-
-## 🛠️ 开发与发布
-
-```bash
-pnpm install
-pnpm run tauri dev
-pnpm run typecheck
-pnpm run build
-```
-
-发布流程：
-
-1. 在 `dev` 完成开发后，squash 合并到 `main`。
-2. 确保 `package.json`、`src-tauri/tauri.conf.json`、`src-tauri/Cargo.toml` 的版本号一致。
-3. 为版本新增双语 release notes，例如 `docs/releases/v0.1.0.md`。
-4. 发版前检查待提交和忽略文件：
-
-```bash
-git status --short
-git status --ignored --short
-```
-
-不要提交本地 AI/Trellis 配置、构建产物、依赖目录、证书、密钥或环境变量文件。正式发布安装包只由 GitHub Actions 生成；将 `vX.Y.Z` tag 推送到 `main` 上的提交后，GitHub Actions 会构建 `Z-Monitor-Switcher.dmg`、Windows NSIS 安装程序 `Z-Monitor-Switcher.exe`、Linux 安装包 `Z-Monitor-Switcher.deb`，并创建 Release。Linux updater 使用 `Z-Monitor-Switcher-linux-x86_64.tar.gz` 写入 `latest.json`，AppImage 仅作为 Tauri 生成 updater tarball 的中间产物，不作为 Release 资产发布。文件名不带版本号，版本由 Release tag 表达。不要把本地构建产物上传到 Release。
 
 ## 📄 许可证
 
