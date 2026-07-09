@@ -114,6 +114,19 @@ export function Settings({ open, settings, updater, onOpenChange }: SettingsProp
             </div>
           )}
 
+          {settings.os === "linux" && (
+            <div className="flex items-center justify-between gap-3">
+              <label className="font-medium">{t("showTray")}</label>
+              <input
+                type="checkbox"
+                className="h-4 w-4"
+                checked
+                disabled
+                readOnly
+              />
+            </div>
+          )}
+
           <div className="flex items-center justify-between gap-3">
             <label className="font-medium">{t("language")}</label>
             <div className="inline-flex rounded-md border p-0.5">

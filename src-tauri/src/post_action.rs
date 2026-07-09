@@ -9,9 +9,10 @@
 //!
 //! Cross-platform commands:
 //!   - Sleep on macOS: `pmset sleepnow`; on Windows:
-//!     `rundll32.exe powrprof.dll,SetSuspendState 0,1,0`.
+//!     `rundll32.exe powrprof.dll,SetSuspendState 0,1,0`; on Linux:
+//!     `systemctl suspend`.
 //!   - Shutdown on macOS: `osascript -e 'tell app "System Events" to shut down'`;
-//!     on Windows: `shutdown /s /t 0`.
+//!     on Windows: `shutdown /s /t 0`; on Linux: `systemctl poweroff`.
 //!
 //! macOS note: `osascript … System Events shut down` is used (instead of
 //! `sudo shutdown`) because it goes through the normal logout/shutdown path
@@ -78,17 +79,27 @@ fn shutdown() -> Result<(), MonitorError> {
     run("shutdown", &["/s", "/t", "0"])
 }
 
-// Fallback for unsupported targets (e.g. Linux): the action is a no-op error so
-// the UI surfaces a clear "not supported here" message instead of silently
-// pretending it ran.
-#[cfg(not(any(target_os = "macos", windows)))]
+#[cfg(target_os = "linux")]
+fn sleep() -> Result<(), MonitorError> {
+    run("systemctl", &["suspend"])
+}
+
+#[cfg(target_os = "linux")]
+fn shutdown() -> Result<(), MonitorError> {
+    run("systemctl", &["poweroff"])
+}
+
+// Fallback for unsupported targets: the action is a no-op error so the UI
+// surfaces a clear "not supported here" message instead of silently pretending
+// it ran.
+#[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
 fn sleep() -> Result<(), MonitorError> {
     Err(MonitorError::PostAction(
         "post-action sleep is not supported on this platform".into(),
     ))
 }
 
-#[cfg(not(any(target_os = "macos", windows)))]
+#[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
 fn shutdown() -> Result<(), MonitorError> {
     Err(MonitorError::PostAction(
         "post-action shutdown is not supported on this platform".into(),
@@ -98,7 +109,7 @@ fn shutdown() -> Result<(), MonitorError> {
 /// Spawn a fire-and-forget OS command. We `spawn` (not `output`) because a
 /// shutdown/sleep command may terminate the process before it returns; we only
 /// surface the launch error (e.g. command not found / not permitted).
-#[cfg(any(target_os = "macos", windows))]
+#[cfg(any(target_os = "macos", target_os = "linux", windows))]
 fn run(program: &str, args: &[&str]) -> Result<(), MonitorError> {
     Command::new(program)
         .args(args)

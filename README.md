@@ -42,9 +42,34 @@ sudo xattr -dr com.apple.quarantine "/Applications/Z Monitor Switcher.app"
 
 **系统要求**：Windows 10/11
 
+### Linux / Ubuntu
+1. 从 [Releases](https://github.com/goalonez/z-monitor-switcher/releases) 下载最新的 `Z-Monitor-Switcher.deb`
+2. 安装：
+
+```bash
+sudo apt install ./Z-Monitor-Switcher.deb
+```
+
+3. 如果无法枚举外接显示器，请启用 I2C 设备并给当前用户访问 `/dev/i2c-*` 的权限：
+
+```bash
+sudo apt install i2c-tools
+sudo modprobe i2c-dev
+echo i2c-dev | sudo tee /etc/modules-load.d/i2c-dev.conf
+sudo groupadd --system i2c 2>/dev/null || true
+sudo usermod -aG i2c "$USER"
+echo 'KERNEL=="i2c-[0-9]*", GROUP="i2c", MODE="0660"' | sudo tee /etc/udev/rules.d/45-i2c-tools.rules
+sudo udevadm control --reload-rules
+sudo udevadm trigger
+```
+
+完成后注销并重新登录。显示器 OSD 菜单中也需要开启 DDC/CI。
+
+**系统要求**：Ubuntu 26.04 目标支持，当前需要实机 smoke test 确认。首个 Linux 版本发布 `.deb` 安装包和 updater tarball，不发布 AppImage。
+
 ## 🚀 快速开始
 
-1. **启动应用** - 首次启动后，应用会在菜单栏（macOS）或系统托盘（Windows）显示图标
+1. **启动应用** - 首次启动后，应用会在菜单栏（macOS）或系统托盘（Windows/Linux）显示图标
 2. **查看显示器** - 点击托盘图标或主窗口查看已连接的外接显示器
 3. **配置输入源** - 在显示器卡片上管理可用的输入源（可自定义输入源名称和对应的数值）
 4. **快速切换** - 点击输入源按钮即可切换，或在"管理输入源"中为常用输入源设置快捷键
@@ -70,6 +95,12 @@ sudo xattr -dr com.apple.quarantine "/Applications/Z Monitor Switcher.app"
 - 笔记本内置屏幕亮度调节
 - 系统音量调节
 
+**Linux / Ubuntu**
+- 通过 `/dev/i2c-*` 暴露 DDC/CI 的外接显示器
+- PipeWire/WirePlumber 系统音量（`wpctl`），并回退到 PulseAudio（`pactl`）
+- 通过 `/sys/class/backlight` 暴露且可写的内置屏亮度
+- 系统托盘、全局快捷键、开机自启和 KVM 切换后休眠/关机交接
+
 ### ❌ 已知限制
 
 **macOS**
@@ -83,6 +114,13 @@ sudo xattr -dr com.apple.quarantine "/Applications/Z Monitor Switcher.app"
 - ⚠️ 部分显示器的 DDC 固件可能存在兼容性问题
 - ⚠️ 多显示器时，重启后设备顺序可能变化
 
+**Linux / Ubuntu**
+- ⚠️ 首个 Linux 支持目标是 Ubuntu 26.04，仍需要真实机器完成最终 smoke test
+- ⚠️ DDC 访问依赖内核 I2C 设备和用户权限，Wayland/X11 本身不能替代 `/dev/i2c-*` 权限
+- ⚠️ 热插拔暂不自动刷新，连接变化后请在应用中手动刷新显示器列表
+- ⚠️ 托盘在 Linux 上必须保持开启，避免窗口关闭后无法找回应用
+- ⚠️ AppImage 不作为首个 Linux 版本的用户发布资产
+
 **通用限制**
 - 输入源的数值（VCP 0x60）因显示器品牌和型号而异，需要自行配置
 - DDC 写入速度较慢（数十到数百毫秒），属于协议特性
@@ -94,7 +132,14 @@ sudo xattr -dr com.apple.quarantine "/Applications/Z Monitor Switcher.app"
 
 - **macOS**：确保使用 USB-C/DP/TB 连接，机身 HDMI 口不支持；MacBook 内置屏和 Apple 显示器不使用 DDC 协议
 - **Windows**：确保显示器支持 DDC/CI（MCCS），可在显示器 OSD 菜单中查看是否有 DDC/CI 选项
+- **Linux**：确认存在 `/dev/i2c-*`，当前用户有读写权限，并且显示器 OSD 已开启 DDC/CI
 - 尝试重插显示器连接线或重启应用
+</details>
+
+<details>
+<summary><b>Linux 上为什么需要 I2C 权限？</b></summary>
+
+DDC/CI 在 Linux 上通常通过 `/dev/i2c-*` 设备访问。应用不会要求 root 运行；推荐用 `i2c` 用户组和 udev 规则给当前用户授权。授权后需要注销并重新登录，或者重启后再试。
 </details>
 
 <details>
@@ -152,7 +197,7 @@ git status --short
 git status --ignored --short
 ```
 
-不要提交本地 AI/Trellis 配置、构建产物、依赖目录、证书、密钥或环境变量文件。正式发布安装包只由 GitHub Actions 生成；将 `vX.Y.Z` tag 推送到 `main` 上的提交后，GitHub Actions 会构建 `Z-Monitor-Switcher.dmg` 和 Windows NSIS 安装程序 `Z-Monitor-Switcher.exe`，并创建 Release。文件名不带版本号，版本由 Release tag 表达。不要把本地构建产物上传到 Release。
+不要提交本地 AI/Trellis 配置、构建产物、依赖目录、证书、密钥或环境变量文件。正式发布安装包只由 GitHub Actions 生成；将 `vX.Y.Z` tag 推送到 `main` 上的提交后，GitHub Actions 会构建 `Z-Monitor-Switcher.dmg`、Windows NSIS 安装程序 `Z-Monitor-Switcher.exe`、Linux 安装包 `Z-Monitor-Switcher.deb`，并创建 Release。Linux updater 使用 `Z-Monitor-Switcher-linux-x86_64.tar.gz` 写入 `latest.json`，AppImage 仅作为 Tauri 生成 updater tarball 的中间产物，不作为 Release 资产发布。文件名不带版本号，版本由 Release tag 表达。不要把本地构建产物上传到 Release。
 
 ## 📄 许可证
 

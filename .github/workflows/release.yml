@@ -330,6 +330,134 @@ jobs:
             release-assets/*.exe.sig
           if-no-files-found: error
 
+  build-linux:
+    name: Build Linux DEB
+    runs-on: ubuntu-24.04
+    needs: validate
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.32.1
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux system dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            curl \
+            file \
+            libayatana-appindicator3-dev \
+            libfuse2t64 \
+            libgtk-3-dev \
+            libssl-dev \
+            libudev-dev \
+            libwebkit2gtk-4.1-dev \
+            libxdo-dev \
+            librsvg2-dev \
+            patchelf \
+            wget
+
+      - name: Install dependencies
+        shell: bash
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate updater signing key
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          SIGNING_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ]]; then
+            echo "TAURI_SIGNING_PRIVATE_KEY secret is required to create updater artifacts." >&2
+            exit 1
+          fi
+
+          probe="$(mktemp)"
+          printf "updater signing preflight" > "${probe}"
+
+          if TAURI_SIGNING_PRIVATE_KEY_PASSWORD="${SIGNING_PASSWORD:-}" pnpm tauri signer sign "${probe}" >/dev/null 2>&1; then
+            effective_password="${SIGNING_PASSWORD:-}"
+          elif pnpm tauri signer sign "${probe}" >/dev/null 2>&1; then
+            effective_password=""
+            echo "TAURI_SIGNING_PRIVATE_KEY_PASSWORD did not match; continuing with an unencrypted updater key." >&2
+          else
+            echo "Unable to decode TAURI_SIGNING_PRIVATE_KEY. Update the TAURI_SIGNING_PRIVATE_KEY_PASSWORD repository secret, or clear it if the key is unencrypted." >&2
+            exit 1
+          fi
+
+          {
+            echo "TAURI_SIGNING_PRIVATE_KEY<<__TAURI_KEY__"
+            echo "${TAURI_SIGNING_PRIVATE_KEY}"
+            echo "__TAURI_KEY__"
+            echo "TAURI_SIGNING_PRIVATE_KEY_PASSWORD<<__TAURI_PASSWORD__"
+            echo "${effective_password}"
+            echo "__TAURI_PASSWORD__"
+          } >> "${GITHUB_ENV}"
+
+      - name: Build DEB and updater tarball
+        shell: bash
+        run: pnpm tauri build --bundles deb,appimage --ci
+
+      - name: Collect DEB and updater artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+
+          deb_count="$(find src-tauri/target -path "*/release/bundle/deb/*.deb" -type f | wc -l | tr -d " ")"
+          if [[ "${deb_count}" != "1" ]]; then
+            echo "Expected exactly one DEB, found ${deb_count}" >&2
+            find src-tauri/target -path "*/release/bundle/deb/*.deb" -type f >&2
+            exit 1
+          fi
+
+          deb="$(find src-tauri/target -path "*/release/bundle/deb/*.deb" -type f -print -quit)"
+          cp "${deb}" "release-assets/Z-Monitor-Switcher.deb"
+
+          tar_count="$(find src-tauri/target -path "*/release/bundle/appimage/*.tar.gz" -type f | wc -l | tr -d " ")"
+          if [[ "${tar_count}" != "1" ]]; then
+            echo "Expected exactly one Linux updater .tar.gz, found ${tar_count}" >&2
+            find src-tauri/target -path "*/release/bundle/appimage/*.tar.gz*" -type f >&2
+            exit 1
+          fi
+
+          tarball="$(find src-tauri/target -path "*/release/bundle/appimage/*.tar.gz" -type f -print -quit)"
+          test -f "${tarball}.sig" || { echo "Missing updater signature ${tarball}.sig" >&2; exit 1; }
+          cp "${tarball}" "release-assets/Z-Monitor-Switcher-linux-x86_64.tar.gz"
+          cp "${tarball}.sig" "release-assets/Z-Monitor-Switcher-linux-x86_64.tar.gz.sig"
+
+          if find release-assets -type f -name "*.AppImage" | grep -q .; then
+            echo "AppImage assets are not published for the Linux MVP." >&2
+            exit 1
+          fi
+
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: linux-deb
+          path: |
+            release-assets/*.deb
+            release-assets/*.tar.gz
+            release-assets/*.tar.gz.sig
+          if-no-files-found: error
+
   publish:
     name: Create GitHub Release
     runs-on: ubuntu-latest
@@ -337,6 +465,7 @@ jobs:
       - validate
       - build-macos
       - build-windows
+      - build-linux
     env:
       GH_TOKEN: ${{ github.token }}
       TAG: ${{ needs.validate.outputs.tag }}
@@ -362,9 +491,17 @@ jobs:
           test -f "release-assets/Z-Monitor-Switcher.exe.sig"
           test -f "release-assets/Z-Monitor-Switcher-aarch64.app.tar.gz"
           test -f "release-assets/Z-Monitor-Switcher-aarch64.app.tar.gz.sig"
+          test -f "release-assets/Z-Monitor-Switcher.deb"
+          test -f "release-assets/Z-Monitor-Switcher-linux-x86_64.tar.gz"
+          test -f "release-assets/Z-Monitor-Switcher-linux-x86_64.tar.gz.sig"
 
           if find release-assets -type f -name "*.msi" | grep -q .; then
             echo "MSI assets are not published for this project." >&2
+            exit 1
+          fi
+
+          if find release-assets -type f -name "*.AppImage" | grep -q .; then
+            echo "AppImage assets are not published for the Linux MVP." >&2
             exit 1
           fi
 
@@ -382,12 +519,15 @@ jobs:
             --arg mac_url "${BASE_URL}/Z-Monitor-Switcher-aarch64.app.tar.gz" \
             --arg win_sig "$(cat "release-assets/Z-Monitor-Switcher.exe.sig")" \
             --arg win_url "${BASE_URL}/Z-Monitor-Switcher.exe" \
+            --arg linux_sig "$(cat "release-assets/Z-Monitor-Switcher-linux-x86_64.tar.gz.sig")" \
+            --arg linux_url "${BASE_URL}/Z-Monitor-Switcher-linux-x86_64.tar.gz" \
             '{
               version: $version,
               pub_date: $pub_date,
               platforms: {
                 "darwin-aarch64": { signature: $mac_sig, url: $mac_url },
-                "windows-x86_64": { signature: $win_sig, url: $win_url }
+                "windows-x86_64": { signature: $win_sig, url: $win_url },
+                "linux-x86_64": { signature: $linux_sig, url: $linux_url }
               }
             }' > release-assets/latest.json
 

@@ -56,14 +56,23 @@ export function useSettings(): UseSettingsResult {
       try {
         const autostartOn = await ensureAutostartDefault();
         await setupTray();
-        await applyConfiguredHotkeys().catch(() => null);
+        const hotkeyError = await applyConfiguredHotkeys().catch(
+          (err: unknown) => (err instanceof Error ? err.message : String(err)),
+        );
 
         const detectedOs = await getOs().catch(() => "");
         const store = await load(STORE_FILE, { defaults: {}, autoSave: true });
         // Defaults: tray ON everywhere; Dock ON on macOS so the app behaves
         // like a normal windowed app unless the user opts into menu-bar-only.
-        const trayVisible = (await store.get<boolean>(SHOW_TRAY_KEY)) ?? true;
+        const storedTrayVisible =
+          (await store.get<boolean>(SHOW_TRAY_KEY)) ?? true;
+        const trayVisible =
+          detectedOs === "macos" ? storedTrayVisible : true;
         const dockVisible = (await store.get<boolean>(SHOW_DOCK_KEY)) ?? true;
+        if (detectedOs !== "macos" && !storedTrayVisible) {
+          await store.set(SHOW_TRAY_KEY, true);
+          await store.save();
+        }
 
         // Apply persisted values to the running app.
         await setTrayVisible(trayVisible).catch(() => {});
@@ -76,7 +85,7 @@ export function useSettings(): UseSettingsResult {
         setOs(detectedOs);
         setShowTrayState(trayVisible);
         setShowDockState(dockVisible);
-        setError(null);
+        setError(hotkeyError);
         setStatus("ready");
       } catch (err: unknown) {
         if (cancelled) return;
@@ -111,7 +120,8 @@ export function useSettings(): UseSettingsResult {
     (value: boolean) => {
       // Safety: never leave the app with no entry point. On macOS, hiding the
       // tray while the Dock is hidden would strand the app, so auto-enable the
-      // Dock; on Windows the tray is the only surface, so refuse to hide it.
+      // Dock; on Windows/Linux the tray is the only guaranteed surface, so
+      // refuse to hide it.
       if (!value && os === "macos" && !showDock) {
         setShowDockState(true);
         void persist(SHOW_DOCK_KEY, true);

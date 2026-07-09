@@ -76,7 +76,7 @@ export async function probeNativeControls(): Promise<NativeControlCapabilities> 
   return invoke<NativeControlCapabilities>("probe_native_controls");
 }
 
-/** Set the local machine's native panel brightness (Windows when supported). */
+/** Set the local machine's native panel brightness when supported. */
 export async function setNativeBrightness(value: number): Promise<void> {
   return invoke<void>("set_native_brightness", { value });
 }
@@ -86,7 +86,7 @@ export async function setSystemVolume(value: number): Promise<void> {
   return invoke<void>("set_system_volume", { value });
 }
 
-/** macOS: keep the display from idle sleeping while enabled. */
+/** Keep the display/session from idle sleeping where the platform supports it. */
 export async function setKeepAwake(enabled: boolean): Promise<void> {
   return invoke<void>("set_keep_awake", { enabled });
 }

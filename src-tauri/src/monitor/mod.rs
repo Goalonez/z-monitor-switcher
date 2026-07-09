@@ -19,6 +19,8 @@ use serde::{Deserialize, Serialize};
 mod error;
 pub use error::MonitorError;
 
+#[cfg(target_os = "linux")]
+mod linux;
 #[cfg(target_os = "macos")]
 mod macos;
 #[cfg(windows)]
@@ -45,7 +47,7 @@ pub mod vcp {
 /// the write as successful if any single attempt does not error, and only
 /// surface the last error if every attempt failed. We never read 0x60 back to
 /// confirm (reads are unreliable); the UI tracks the optimistic value instead.
-#[cfg(any(target_os = "macos", windows))]
+#[cfg(any(target_os = "macos", target_os = "linux", windows))]
 pub mod write_retry {
     use std::time::Duration;
 
@@ -155,15 +157,19 @@ pub fn backend() -> impl MonitorControl {
     {
         windows::WindowsMonitors::new()
     }
-    // Fallback so the crate still builds on unsupported targets (e.g. Linux),
-    // where the UI will simply show "no monitors".
-    #[cfg(not(any(target_os = "macos", windows)))]
+    #[cfg(target_os = "linux")]
+    {
+        linux::LinuxMonitors::new()
+    }
+    // Fallback so the crate still builds on unsupported targets, where the UI
+    // will simply show "no monitors".
+    #[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
     {
         unsupported::UnsupportedMonitors
     }
 }
 
-#[cfg(not(any(target_os = "macos", windows)))]
+#[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
 mod unsupported {
     use super::{MonitorCapabilities, MonitorControl, MonitorError, MonitorInfo};
 

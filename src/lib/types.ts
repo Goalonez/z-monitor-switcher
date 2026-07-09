@@ -88,8 +88,7 @@ export interface NativeToggleFeature {
 
 /**
  * Local-machine controls shown once in the app, independent from DDC monitor
- * cards. macOS supports system volume only; Windows supports native panel
- * brightness and system volume when the OS exposes those providers.
+ * cards. Platform backends report only the controls exposed by the OS/session.
  */
 export interface NativeControlCapabilities {
   nativeBrightness: NativeControlFeature;

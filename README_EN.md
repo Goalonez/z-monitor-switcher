@@ -42,9 +42,34 @@ Do not run this command against the entire `/Applications/` directory.
 
 **Requirements**: Windows 10/11
 
+### Linux / Ubuntu
+1. Download the latest `Z-Monitor-Switcher.deb` from [Releases](https://github.com/goalonez/z-monitor-switcher/releases)
+2. Install it:
+
+```bash
+sudo apt install ./Z-Monitor-Switcher.deb
+```
+
+3. If external monitors are not listed, enable I2C devices and grant your user access to `/dev/i2c-*`:
+
+```bash
+sudo apt install i2c-tools
+sudo modprobe i2c-dev
+echo i2c-dev | sudo tee /etc/modules-load.d/i2c-dev.conf
+sudo groupadd --system i2c 2>/dev/null || true
+sudo usermod -aG i2c "$USER"
+echo 'KERNEL=="i2c-[0-9]*", GROUP="i2c", MODE="0660"' | sudo tee /etc/udev/rules.d/45-i2c-tools.rules
+sudo udevadm control --reload-rules
+sudo udevadm trigger
+```
+
+Log out and back in after changing group membership. DDC/CI must also be enabled in the monitor OSD menu.
+
+**Requirements**: Ubuntu 26.04 target support, pending final real-machine smoke testing. The first Linux release ships a `.deb` installer and updater tarball, but no AppImage release asset.
+
 ## 🚀 Quick Start
 
-1. **Launch the App** - After first launch, the app icon will appear in the menu bar (macOS) or system tray (Windows)
+1. **Launch the App** - After first launch, the app icon will appear in the menu bar (macOS) or system tray (Windows/Linux)
 2. **View Monitors** - Click the tray icon or main window to see connected external monitors
 3. **Configure Input Sources** - Manage available input sources on monitor cards (you can customize input source names and values)
 4. **Quick Switch** - Click input source buttons to switch, or set hotkeys for frequently used sources in "Manage Input Sources"
@@ -70,6 +95,12 @@ Do not run this command against the entire `/Applications/` directory.
 - Laptop built-in screen brightness control
 - System volume control
 
+**Linux / Ubuntu**
+- External monitors whose DDC/CI interface is exposed through `/dev/i2c-*`
+- PipeWire/WirePlumber system volume via `wpctl`, with PulseAudio `pactl` fallback
+- Built-in display brightness through writable `/sys/class/backlight` providers
+- System tray, global hotkeys, launch at login, and KVM sleep/shutdown handoff
+
 ### ❌ Known Limitations
 
 **macOS**
@@ -83,6 +114,13 @@ Do not run this command against the entire `/Applications/` directory.
 - ⚠️ Some monitors' DDC firmware may have compatibility issues
 - ⚠️ With multiple monitors, device order may change after restart
 
+**Linux / Ubuntu**
+- ⚠️ The first Linux support target is Ubuntu 26.04 and still needs final real-machine smoke testing
+- ⚠️ DDC access depends on kernel I2C devices and user permissions; Wayland/X11 permissions do not replace `/dev/i2c-*` access
+- ⚠️ Hot-plug auto-refresh is not implemented yet; use the manual refresh action after monitor changes
+- ⚠️ The tray must remain enabled on Linux so the app is still reachable after closing the window
+- ⚠️ AppImage is not published as a user-facing asset for the first Linux release
+
 **General Limitations**
 - Input source values (VCP 0x60) vary by monitor brand and model; manual configuration required
 - DDC write speed is slow (tens to hundreds of milliseconds), which is a protocol characteristic
@@ -94,7 +132,14 @@ Do not run this command against the entire `/Applications/` directory.
 
 - **macOS**: Ensure you're using USB-C/DP/TB connection; built-in HDMI ports aren't supported; MacBook built-in screens and Apple displays don't use DDC protocol
 - **Windows**: Ensure your monitor supports DDC/CI (MCCS); check if there's a DDC/CI option in the monitor's OSD menu
+- **Linux**: Confirm `/dev/i2c-*` exists, your user can read/write it, and DDC/CI is enabled in the monitor OSD
 - Try reconnecting the monitor cable or restarting the app
+</details>
+
+<details>
+<summary><b>Why does Linux need I2C permissions?</b></summary>
+
+On Linux, DDC/CI is usually accessed through `/dev/i2c-*` devices. The app is not meant to run as root; use an `i2c` group and udev rule to grant access to your user. Log out and back in, or reboot, after changing group membership.
 </details>
 
 <details>
@@ -152,7 +197,7 @@ git status --short
 git status --ignored --short
 ```
 
-Do not commit local AI/Trellis config, build outputs, dependency directories, certificates, keys, or environment files. Official release installers are produced only by GitHub Actions; after pushing a `vX.Y.Z` tag that points to a `main` commit, GitHub Actions builds `Z-Monitor-Switcher.dmg` and the Windows NSIS installer `Z-Monitor-Switcher.exe`, then creates the Release. Asset filenames do not include the version; the Release tag carries it. Do not upload local build outputs to a Release.
+Do not commit local AI/Trellis config, build outputs, dependency directories, certificates, keys, or environment files. Official release installers are produced only by GitHub Actions; after pushing a `vX.Y.Z` tag that points to a `main` commit, GitHub Actions builds `Z-Monitor-Switcher.dmg`, the Windows NSIS installer `Z-Monitor-Switcher.exe`, and the Linux installer `Z-Monitor-Switcher.deb`, then creates the Release. Linux updater metadata points to `Z-Monitor-Switcher-linux-x86_64.tar.gz` in `latest.json`; AppImage is only an intermediate artifact used by Tauri to generate that updater tarball and is not published as a Release asset. Asset filenames do not include the version; the Release tag carries it. Do not upload local build outputs to a Release.
 
 ## 📄 License
 

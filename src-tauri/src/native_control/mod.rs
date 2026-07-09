@@ -1,14 +1,16 @@
 //! Native local-machine controls that are independent from DDC monitors.
 //!
 //! These commands model the laptop / OS controls shown once in the UI:
-//! Windows native panel brightness and default system output volume, and macOS
-//! default system output volume. They deliberately do not live in `monitor/`
-//! because they are not per-display DDC VCP features.
+//! platform-native panel brightness, default system output volume, and
+//! keep-awake where the OS exposes those controls. They deliberately do not
+//! live in `monitor/` because they are not per-display DDC VCP features.
 
 use serde::{Deserialize, Serialize};
 
 use crate::monitor::MonitorError;
 
+#[cfg(target_os = "linux")]
+mod linux;
 #[cfg(target_os = "macos")]
 mod macos;
 #[cfg(windows)]
@@ -88,11 +90,15 @@ pub fn probe() -> Result<NativeControlCapabilities, MonitorError> {
     {
         macos::probe()
     }
+    #[cfg(target_os = "linux")]
+    {
+        linux::probe()
+    }
     #[cfg(windows)]
     {
         windows::probe()
     }
-    #[cfg(not(any(target_os = "macos", windows)))]
+    #[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
     {
         Ok(unsupported::probe())
     }
@@ -103,11 +109,15 @@ pub fn set_native_brightness(value: u16) -> Result<(), MonitorError> {
     {
         macos::set_native_brightness(value)
     }
+    #[cfg(target_os = "linux")]
+    {
+        linux::set_native_brightness(value)
+    }
     #[cfg(windows)]
     {
         windows::set_native_brightness(value)
     }
-    #[cfg(not(any(target_os = "macos", windows)))]
+    #[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
     {
         let _ = value;
         unsupported::set_native_brightness()
@@ -119,11 +129,15 @@ pub fn set_system_volume(value: u16) -> Result<(), MonitorError> {
     {
         macos::set_system_volume(value)
     }
+    #[cfg(target_os = "linux")]
+    {
+        linux::set_system_volume(value)
+    }
     #[cfg(windows)]
     {
         windows::set_system_volume(value)
     }
-    #[cfg(not(any(target_os = "macos", windows)))]
+    #[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
     {
         let _ = value;
         unsupported::set_system_volume()
@@ -135,11 +149,15 @@ pub fn set_keep_awake(enabled: bool) -> Result<(), MonitorError> {
     {
         macos::set_keep_awake(enabled)
     }
+    #[cfg(target_os = "linux")]
+    {
+        linux::set_keep_awake(enabled)
+    }
     #[cfg(windows)]
     {
         windows::set_keep_awake(enabled)
     }
-    #[cfg(not(any(target_os = "macos", windows)))]
+    #[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
     {
         let _ = enabled;
         unsupported::set_keep_awake()
@@ -151,13 +169,17 @@ pub fn release_keep_awake() {
     {
         macos::release_keep_awake();
     }
+    #[cfg(target_os = "linux")]
+    {
+        linux::release_keep_awake();
+    }
 }
 
 fn clamp_percent(value: u16) -> u16 {
     value.min(100)
 }
 
-#[cfg(not(any(target_os = "macos", windows)))]
+#[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
 mod unsupported {
     use super::{NativeControlCapabilities, NativeControlFeature, NativeToggleFeature};
     use crate::monitor::MonitorError;
