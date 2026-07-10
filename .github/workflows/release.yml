@@ -430,6 +430,16 @@ jobs:
 
           deb="$(find src-tauri/target -path "*/release/bundle/deb/*.deb" -type f -print -quit)"
           cp "${deb}" "release-assets/Z-Monitor-Switcher.deb"
+          deb_magic="$(od -An -tx1 -N8 "release-assets/Z-Monitor-Switcher.deb" | tr -d " \n")"
+          if [[ "${deb_magic}" != "213c617263683e0a" ]]; then
+            echo "Collected Linux package is not a valid DEB archive" >&2
+            exit 1
+          fi
+          pnpm tauri signer sign "release-assets/Z-Monitor-Switcher.deb"
+          test -f "release-assets/Z-Monitor-Switcher.deb.sig" || {
+            echo "Missing updater signature release-assets/Z-Monitor-Switcher.deb.sig" >&2
+            exit 1
+          }
 
           tar_count="$(find src-tauri/target -path "*/release/bundle/appimage/*.tar.gz" -type f | wc -l | tr -d " ")"
           if [[ "${tar_count}" != "1" ]]; then
@@ -454,6 +464,7 @@ jobs:
           name: linux-deb
           path: |
             release-assets/*.deb
+            release-assets/*.deb.sig
             release-assets/*.tar.gz
             release-assets/*.tar.gz.sig
           if-no-files-found: error
@@ -492,8 +503,15 @@ jobs:
           test -f "release-assets/Z-Monitor-Switcher-aarch64.app.tar.gz"
           test -f "release-assets/Z-Monitor-Switcher-aarch64.app.tar.gz.sig"
           test -f "release-assets/Z-Monitor-Switcher.deb"
+          test -f "release-assets/Z-Monitor-Switcher.deb.sig"
           test -f "release-assets/Z-Monitor-Switcher-linux-x86_64.tar.gz"
           test -f "release-assets/Z-Monitor-Switcher-linux-x86_64.tar.gz.sig"
+
+          deb_magic="$(od -An -tx1 -N8 "release-assets/Z-Monitor-Switcher.deb" | tr -d " \n")"
+          if [[ "${deb_magic}" != "213c617263683e0a" ]]; then
+            echo "Z-Monitor-Switcher.deb does not have the DEB ar archive magic" >&2
+            exit 1
+          fi
 
           if find release-assets -type f -name "*.msi" | grep -q .; then
             echo "MSI assets are not published for this project." >&2
@@ -521,15 +539,28 @@ jobs:
             --arg win_url "${BASE_URL}/Z-Monitor-Switcher.exe" \
             --arg linux_sig "$(cat "release-assets/Z-Monitor-Switcher-linux-x86_64.tar.gz.sig")" \
             --arg linux_url "${BASE_URL}/Z-Monitor-Switcher-linux-x86_64.tar.gz" \
+            --arg linux_deb_sig "$(cat "release-assets/Z-Monitor-Switcher.deb.sig")" \
+            --arg linux_deb_url "${BASE_URL}/Z-Monitor-Switcher.deb" \
             '{
               version: $version,
               pub_date: $pub_date,
               platforms: {
                 "darwin-aarch64": { signature: $mac_sig, url: $mac_url },
                 "windows-x86_64": { signature: $win_sig, url: $win_url },
-                "linux-x86_64": { signature: $linux_sig, url: $linux_url }
+                "linux-x86_64": { signature: $linux_sig, url: $linux_url },
+                "linux-x86_64-deb": { signature: $linux_deb_sig, url: $linux_deb_url }
               }
             }' > release-assets/latest.json
+
+          jq -e '
+            (.platforms["linux-x86_64"].url | endswith(".tar.gz")) and
+            (.platforms["linux-x86_64"].signature | length > 0) and
+            (.platforms["linux-x86_64-deb"].url | endswith(".deb")) and
+            (.platforms["linux-x86_64-deb"].signature | length > 0)
+          ' release-assets/latest.json >/dev/null || {
+            echo "Linux updater manifest routes or signatures are invalid" >&2
+            exit 1
+          }
 
           # Signatures are embedded in latest.json; standalone .sig files are
           # not published as release assets.
