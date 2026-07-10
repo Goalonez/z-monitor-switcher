@@ -36,6 +36,10 @@ const DICT = {
     shortcut: "快捷键",
     pressShortcut: "按组合键",
     setShortcut: "设置快捷键",
+    configureSystemShortcut: "在系统中配置快捷键",
+    systemShortcut: "系统快捷键",
+    waylandShortcutHint:
+      "Wayland 快捷键由系统授权和分配。点击某个快捷键按钮后，在系统对话框中完成配置；系统返回的组合键为最终结果。",
     clearShortcut: "清除快捷键",
     deleteInput: "删除输入源",
     inputEnabled: "是否生效",
@@ -125,6 +129,10 @@ const DICT = {
     shortcut: "Shortcut",
     pressShortcut: "Press keys",
     setShortcut: "Set shortcut",
+    configureSystemShortcut: "Configure system shortcut",
+    systemShortcut: "System shortcut",
+    waylandShortcutHint:
+      "Wayland shortcuts are authorized and assigned by the desktop. Click a shortcut button, finish the system dialog, and use the trigger returned by the system.",
     clearShortcut: "Clear shortcut",
     deleteInput: "Delete input",
     inputEnabled: "Enabled",

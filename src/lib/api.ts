@@ -3,7 +3,10 @@ import type {
   MonitorCapabilities,
   MonitorInfo,
   NativeControlCapabilities,
+  PortalShortcutBinding,
+  PortalShortcutRegistration,
   PostAction,
+  ShortcutBackendInfo,
 } from "@/lib/types";
 
 /**
@@ -138,4 +141,23 @@ export async function getOs(): Promise<string> {
  */
 export async function setDockVisible(visible: boolean): Promise<void> {
   return invoke<void>("set_dock_visible", { visible });
+}
+
+/** Select native plugin vs. Wayland XDG Portal shortcut handling. */
+export async function getShortcutBackend(): Promise<ShortcutBackendInfo> {
+  return invoke<ShortcutBackendInfo>("get_shortcut_backend");
+}
+
+/** Recreate the Wayland Portal session and bind the supplied shortcuts once. */
+export async function configurePortalShortcuts(
+  bindings: PortalShortcutBinding[],
+): Promise<PortalShortcutRegistration[]> {
+  return invoke<PortalShortcutRegistration[]>("configure_portal_shortcuts", {
+    bindings,
+  });
+}
+
+/** Close the active Wayland Portal shortcut session, if any. */
+export async function clearPortalShortcuts(): Promise<void> {
+  return invoke<void>("clear_portal_shortcuts");
 }

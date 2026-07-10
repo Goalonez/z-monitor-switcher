@@ -39,6 +39,29 @@ export interface InputSource {
   accelerator: string;
 }
 
+export type ShortcutBackend = "native" | "portal" | "unavailable";
+
+/** Runtime shortcut implementation selected by the Rust backend. */
+export interface ShortcutBackendInfo {
+  backend: ShortcutBackend;
+  sessionType: string | null;
+  error: string | null;
+}
+
+/** One input-source shortcut sent to the Wayland GlobalShortcuts Portal. */
+export interface PortalShortcutBinding {
+  id: string;
+  description: string;
+  monitor: MonitorInfo;
+  value: number;
+}
+
+/** Authoritative trigger label returned by the desktop Portal. */
+export interface PortalShortcutRegistration {
+  id: string;
+  triggerDescription: string;
+}
+
 /** A named set of input-source presets the user can apply as a starting point. */
 export interface InputPreset {
   id: string;

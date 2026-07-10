@@ -1,12 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { MonitorInfo } from "@/lib/types";
+import type { ShortcutBackend } from "@/lib/types";
 import { useMonitorInput } from "@/hooks/useMonitorInput";
 import { DEFAULT_PRESET_ID } from "@/lib/presets";
 import {
   acceleratorFromEvent,
   displayAccelerator,
 } from "@/lib/accelerators";
-import { applyConfiguredHotkeys, clearHotkeys } from "@/lib/hotkeys";
+import {
+  applyConfiguredHotkeys,
+  clearHotkeys,
+  configurePortalHotkey,
+  getShortcutBackendInfo,
+} from "@/lib/hotkeys";
 import { Button } from "@/components/ui/button";
 import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
@@ -65,12 +71,37 @@ export function InputSwitcher({
   const [recordingHotkeyError, setRecordingHotkeyError] = useState<
     string | null
   >(null);
+  const [shortcutBackend, setShortcutBackend] =
+    useState<ShortcutBackend>("native");
+  const [portalConfiguringIndex, setPortalConfiguringIndex] = useState<
+    number | null
+  >(null);
   const recordButtonRef = useRef<HTMLButtonElement>(null);
   const hotkeySuspendPromiseRef = useRef<Promise<void>>(Promise.resolve());
   const recordingTokenRef = useRef(0);
   const enabledSources = config.sources.filter((source) => source.enabled);
   const visibleConfigError = configError ?? recordingHotkeyError;
   const recordingIndex = recording?.index ?? null;
+
+  useEffect(() => {
+    let active = true;
+    void getShortcutBackendInfo()
+      .then((info) => {
+        if (!active) return;
+        setShortcutBackend(info.backend);
+        if (info.error) setRecordingHotkeyError(info.error);
+      })
+      .catch((err: unknown) => {
+        if (!active) return;
+        setShortcutBackend("unavailable");
+        setRecordingHotkeyError(
+          err instanceof Error ? err.message : String(err),
+        );
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const restoreConfiguredHotkeys = useCallback((token: number) => {
     void hotkeySuspendPromiseRef.current
@@ -125,6 +156,21 @@ export function InputSwitcher({
       }
     });
   }, []);
+
+  const configureSystemShortcut = useCallback(
+    (index: number) => {
+      setRecordingHotkeyError(null);
+      setPortalConfiguringIndex(index);
+      void configurePortalHotkey(monitor, index)
+        .catch((err: unknown) => {
+          setRecordingHotkeyError(
+            err instanceof Error ? err.message : String(err),
+          );
+        })
+        .finally(() => setPortalConfiguringIndex(null));
+    },
+    [monitor],
+  );
 
   useEffect(() => {
     if (!recording) return;
@@ -247,12 +293,22 @@ export function InputSwitcher({
             </div>
 
             <div className="space-y-2 overflow-y-auto p-4">
+              {shortcutBackend === "portal" && (
+                <p className="rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                  {t("waylandShortcutHint")}
+                </p>
+              )}
               {config.sources.map((source, index) => {
                 const isActiveRecorder = recordingIndex === index;
                 const isStartingRecorder =
                   isActiveRecorder && recording?.phase === "starting";
                 const isReadyRecorder =
                   isActiveRecorder && recording?.phase === "recording";
+                const isPortalConfiguring = portalConfiguringIndex === index;
+                const shortcutLabel =
+                  shortcutBackend === "portal"
+                    ? source.accelerator.trim()
+                    : displayAccelerator(source.accelerator);
 
                 return (
                 <div
@@ -295,17 +351,25 @@ export function InputSwitcher({
                     variant={isActiveRecorder ? "secondary" : "outline"}
                     size="sm"
                     className="min-w-0 px-2"
-                    disabled={isStartingRecorder}
+                    disabled={isStartingRecorder || isPortalConfiguring}
                     onClick={() => {
+                      if (shortcutBackend === "portal") {
+                        configureSystemShortcut(index);
+                        return;
+                      }
                       if (isActiveRecorder) {
                         cancelRecording();
                         return;
                       }
                       startRecording(index);
                     }}
-                    title={t("setShortcut")}
+                    title={
+                      shortcutBackend === "portal"
+                        ? t("configureSystemShortcut")
+                        : t("setShortcut")
+                    }
                   >
-                    {isStartingRecorder ? (
+                    {isStartingRecorder || isPortalConfiguring ? (
                       <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
                     ) : (
                       <Keyboard className="h-3.5 w-3.5 shrink-0" />
@@ -313,7 +377,10 @@ export function InputSwitcher({
                     <span className="min-w-0">
                       {isReadyRecorder
                         ? t("pressShortcut")
-                        : displayAccelerator(source.accelerator) || t("shortcut")}
+                        : shortcutLabel ||
+                          (shortcutBackend === "portal"
+                            ? t("systemShortcut")
+                            : t("shortcut"))}
                     </span>
                   </Button>
                   <Button

@@ -1,7 +1,6 @@
 import { load, type Store } from "@tauri-apps/plugin-store";
 import type { InputSource, KvmConfig, MonitorInfo } from "@/lib/types";
 import { DEFAULT_PRESET_ID, clonePresetSources } from "@/lib/presets";
-import { normalizeAccelerator } from "@/lib/accelerators";
 
 /**
  * Per-monitor input-source configuration persisted via tauri-plugin-store.
@@ -63,7 +62,10 @@ function normalizeInputSource(source: StoredInputSource): InputSource {
     label: source.label,
     value: source.value,
     enabled: source.enabled ?? true,
-    accelerator: normalizeAccelerator(source.accelerator ?? ""),
+    // Wayland's Portal returns a desktop-authored trigger description. Keep
+    // that exact string in storage; the native plugin normalizes only when it
+    // registers on macOS/Windows/X11.
+    accelerator: (source.accelerator ?? "").trim(),
   };
 }
 

@@ -1,5 +1,6 @@
 mod clean_mode;
 mod display_watch;
+mod global_shortcut;
 mod monitor;
 mod native_control;
 mod post_action;
@@ -215,6 +216,44 @@ fn set_dock_visible(app: tauri::AppHandle, visible: bool) -> Result<(), String> 
     Ok(())
 }
 
+#[tauri::command]
+async fn get_shortcut_backend() -> global_shortcut::ShortcutBackendInfo {
+    global_shortcut::backend_info().await
+}
+
+#[cfg(target_os = "linux")]
+#[tauri::command]
+async fn configure_portal_shortcuts(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, global_shortcut::PortalShortcutState>,
+    bindings: Vec<global_shortcut::PortalShortcutBinding>,
+) -> Result<Vec<global_shortcut::PortalShortcutRegistration>, String> {
+    global_shortcut::configure_portal_shortcuts(app, &state, bindings).await
+}
+
+#[cfg(not(target_os = "linux"))]
+#[tauri::command]
+async fn configure_portal_shortcuts(
+    app: tauri::AppHandle,
+    bindings: Vec<global_shortcut::PortalShortcutBinding>,
+) -> Result<Vec<global_shortcut::PortalShortcutRegistration>, String> {
+    global_shortcut::configure_portal_shortcuts(app, bindings).await
+}
+
+#[cfg(target_os = "linux")]
+#[tauri::command]
+async fn clear_portal_shortcuts(
+    state: tauri::State<'_, global_shortcut::PortalShortcutState>,
+) -> Result<(), String> {
+    global_shortcut::clear_portal_shortcuts(&state).await
+}
+
+#[cfg(not(target_os = "linux"))]
+#[tauri::command]
+async fn clear_portal_shortcuts() -> Result<(), String> {
+    global_shortcut::clear_portal_shortcuts().await
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let builder = tauri::Builder::default()
@@ -234,6 +273,9 @@ pub fn run() {
         ))
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init());
+
+    #[cfg(target_os = "linux")]
+    let builder = builder.manage(global_shortcut::PortalShortcutState::default());
 
     builder
         .setup(|app| {
@@ -285,7 +327,10 @@ pub fn run() {
             open_url,
             quit_app,
             get_os,
-            set_dock_visible
+            set_dock_visible,
+            get_shortcut_backend,
+            configure_portal_shortcuts,
+            clear_portal_shortcuts
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
