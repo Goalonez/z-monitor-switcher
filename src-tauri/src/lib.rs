@@ -9,9 +9,28 @@ use native_control::NativeControlCapabilities;
 use post_action::PostAction;
 
 const SILENT_START_ARG: &str = "--silent-start";
+const MAIN_WINDOW_LABEL: &str = "main";
 
 fn is_silent_start() -> bool {
     std::env::args().any(|arg| arg == SILENT_START_ARG)
+}
+
+fn should_hide_on_close(label: &str) -> bool {
+    label == MAIN_WINDOW_LABEL
+}
+
+/// Hide only the primary window for close-to-tray behavior.
+///
+/// The caller must prevent the native close only after this returns `Ok(true)`.
+/// If hiding fails, leaving the request unprevented is the safe fallback: the
+/// close button still has an effect instead of becoming a silent no-op.
+fn hide_main_window_on_close<R: tauri::Runtime>(window: &tauri::Window<R>) -> tauri::Result<bool> {
+    if !should_hide_on_close(window.label()) {
+        return Ok(false);
+    }
+
+    window.hide()?;
+    Ok(true)
 }
 
 /// Enumerate connected displays. Best-effort: a backend that cannot read a
@@ -240,12 +259,13 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
-            // Close = minimize to tray: intercept the close request, prevent the
-            // default (which would destroy the window / exit), and hide instead.
-            // The process keeps running so the tray and global hotkeys stay live.
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                api.prevent_close();
-                let _ = window.hide();
+                // Close-to-tray applies only to the main window. Prevent the
+                // native close after hide succeeds so a Linux hide failure falls
+                // back to normal close instead of producing a dead close button.
+                if matches!(hide_main_window_on_close(window), Ok(true)) {
+                    api.prevent_close();
+                }
             }
         })
         .invoke_handler(tauri::generate_handler![
@@ -288,4 +308,16 @@ pub fn run() {
             // Silence unused warnings on non-macOS builds.
             let _ = (app, &event);
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{should_hide_on_close, MAIN_WINDOW_LABEL};
+
+    #[test]
+    fn close_to_tray_only_applies_to_main_window() {
+        assert!(should_hide_on_close(MAIN_WINDOW_LABEL));
+        assert!(!should_hide_on_close("tray-controls"));
+        assert!(!should_hide_on_close("clean-mode-display-1"));
+    }
 }
