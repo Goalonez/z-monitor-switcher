@@ -68,6 +68,7 @@ CLAUDE.md
 .claude/
 .codex/
 .opencode/
+.pi/
 .agents/
 .trellis/
 .history/
