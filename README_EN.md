@@ -75,7 +75,7 @@ Log out and back in after changing group membership. DDC/CI must also be enabled
 ### 📝 Usage Tips
 
 - **Tray Quick Panel**: Left-click the tray icon to open the quick panel for fast input source switching and parameter adjustment
-- **Record Hotkeys**: In the "Manage Input Sources" dialog, click the hotkey input field and press your desired key combination (click outside the input field to cancel)
+- **Record Hotkeys**: In the "Manage Input Sources" dialog, click the hotkey input field and press your desired key combination (click outside the input field to cancel). On Wayland sessions, the desktop shortcut authorization dialog is the source of truth for the final key combination.
 - **KVM Mode**: Enable "Shutdown After Switch" feature. When switching to the specified input source, a countdown confirmation dialog will appear for automatic multi-machine switching
 - **Custom Input Sources**: Input source values may vary by monitor; you can add or modify them via "Manage Input Sources"
 
@@ -114,6 +114,7 @@ Log out and back in after changing group membership. DDC/CI must also be enabled
 **Linux / Ubuntu**
 - ⚠️ Linux support is primarily targeted at Ubuntu 26.04; other distributions may require dependency and permission checks
 - ⚠️ DDC access depends on kernel I2C devices and user permissions; Wayland/X11 permissions do not replace `/dev/i2c-*` access
+- ⚠️ Wayland global hotkeys are authorized and assigned by the desktop; some desktop environments may not provide a Global Shortcuts Portal
 - ⚠️ Hot-plug auto-refresh is not implemented yet; use the manual refresh action after monitor changes
 - ⚠️ The tray must remain enabled on Linux so the app is still reachable after closing the window
 
@@ -150,6 +151,7 @@ On Linux, DDC/CI is usually accessed through `/dev/i2c-*` devices. The app is no
 <summary><b>Hotkeys don't work?</b></summary>
 
 - Ensure hotkeys don't conflict with system or other apps
+- Linux Wayland sessions require approving hotkeys in the system dialog; if your desktop does not support the Global Shortcuts Portal, use an X11 session or your desktop's own shortcut tools
 - Try using different key combinations (avoid system reserved keys like F9)
 - Re-record the hotkey
 </details>
