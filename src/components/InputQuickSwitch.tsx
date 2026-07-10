@@ -2,7 +2,6 @@ import type { MonitorInfo } from "@/lib/types";
 import { useMonitorInput } from "@/hooks/useMonitorInput";
 import { Button } from "@/components/ui/button";
 import { useI18n } from "@/lib/i18n";
-import { cn } from "@/lib/utils";
 import { Loader2, MonitorUp } from "lucide-react";
 
 interface InputQuickSwitchProps {
@@ -22,7 +21,6 @@ export function InputQuickSwitch({
 }: InputQuickSwitchProps) {
   const {
     config,
-    activeValue,
     status,
     switchingValue,
     error,
@@ -43,12 +41,7 @@ export function InputQuickSwitch({
             key={`${source.label}-${index}`}
             variant="outline"
             size="sm"
-            className={cn(
-              "min-w-0 transition active:scale-[0.98]",
-              activeValue === source.value &&
-                "border-primary/50 bg-accent text-accent-foreground",
-            )}
-            aria-pressed={activeValue === source.value}
+            className="min-w-0 transition active:scale-[0.98]"
             onClick={() => switchTo(source.value)}
           >
             {status === "switching" && switchingValue === source.value && (

@@ -290,9 +290,11 @@ pub fn run() {
             // Windows falls back to the manual refresh button). Best-effort.
             display_watch::start(app.handle().clone());
 
-            if !is_silent_start() {
-                use tauri::Manager;
-                if let Some(window) = app.get_webview_window("main") {
+            use tauri::Manager;
+            if let Some(window) = app.get_webview_window("main") {
+                if is_silent_start() {
+                    let _ = window.hide();
+                } else {
                     let _ = window.show();
                     let _ = window.unminimize();
                     let _ = window.set_focus();

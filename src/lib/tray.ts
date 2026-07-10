@@ -21,11 +21,13 @@ import { translate } from "@/lib/i18n";
 /**
  * System-tray / menu-bar integration.
  *
- * No native menu is attached: on macOS a menu makes the OS swallow the left
- * click and never deliver the `action` event. Instead the tray is purely
- * click-driven:
+ * macOS stays menu-less because a native menu makes the OS swallow the left
+ * click and never deliver the `action` event. Windows keeps a native menu with
+ * quick controls; Linux uses only stable native menu actions (show-window and
+ * quit) because tray click events and custom popup positioning are unreliable.
+ * On platforms with click events:
  *   - left click (or left double-click) → the compact controls popup panel
- *     (brightness / volume sliders, input quick-switch, show-window, quit)
+ *     (macOS/Windows only)
  *   - right click → show + focus the main window
  *
  * The tray icon persists for the lifetime of the webview process, which keeps
@@ -275,6 +277,27 @@ async function showTrayControls(
 async function createTrayMenu(os: string): Promise<Menu | undefined> {
   if (os === "macos") return undefined;
 
+  const stableItems = [
+    {
+      id: "show-window",
+      text: translate("showWindow"),
+      action: () => {
+        void showMainWindow().catch(() => {});
+      },
+    },
+    {
+      id: "quit",
+      text: translate("quit"),
+      action: () => {
+        void quitApp().catch(() => {});
+      },
+    },
+  ];
+
+  if (os === "linux") {
+    return Menu.new({ items: stableItems });
+  }
+
   return Menu.new({
     items: [
       {
@@ -282,28 +305,11 @@ async function createTrayMenu(os: string): Promise<Menu | undefined> {
         text: translate("controls"),
         action: () => {
           void cursorPosition()
-            .then((position) =>
-              showTrayControls({ type: "point", position }),
-            )
-            .catch(() =>
-              showTrayControls({ type: "primary-top-right" }),
-            );
+            .then((position) => showTrayControls({ type: "point", position }))
+            .catch(() => showTrayControls({ type: "primary-top-right" }));
         },
       },
-      {
-        id: "show-window",
-        text: translate("showWindow"),
-        action: () => {
-          void showMainWindow().catch(() => {});
-        },
-      },
-      {
-        id: "quit",
-        text: translate("quit"),
-        action: () => {
-          void quitApp().catch(() => {});
-        },
-      },
+      ...stableItems,
     ],
   });
 }
@@ -398,7 +404,7 @@ export async function setupTray(): Promise<void> {
           event.type === "Click" &&
           event.button === "Right" &&
           event.buttonState === "Up";
-        if (leftClickUp || leftDoubleClick) {
+        if ((leftClickUp || leftDoubleClick) && os !== "linux") {
           void toggleTrayControls(event).catch(() => {});
         } else if (rightClickUp) {
           void showMainWindow().catch(() => {});

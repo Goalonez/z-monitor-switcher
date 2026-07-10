@@ -50,19 +50,22 @@ export function AdjustControls({
   if (layout === "vertical") {
     const verticalColumnClass =
       "grid grid-rows-[1.25rem_7rem_1.25rem_1rem] justify-items-center gap-2";
+    const verticalSliderCellClass = "flex h-28 w-8 items-center justify-center";
 
     return (
       <div className="grid grid-cols-2 gap-3 border-t pt-4">
         <div className={verticalColumnClass}>
           <Sun className="h-5 w-5 text-muted-foreground" />
-          <Slider
-            orientation="vertical"
-            value={brightness ?? 0}
-            max={brightnessMax}
-            onValueChange={changeBrightness}
-            aria-label={t("brightness")}
-            className="h-28"
-          />
+          <div className={verticalSliderCellClass}>
+            <Slider
+              orientation="vertical"
+              value={brightness ?? 0}
+              max={brightnessMax}
+              onValueChange={changeBrightness}
+              aria-label={t("brightness")}
+              className="h-28"
+            />
+          </div>
           <span className="text-sm tabular-nums text-muted-foreground">
             {brightness ?? "—"}
           </span>
@@ -73,25 +76,27 @@ export function AdjustControls({
           <Volume2 className="h-5 w-5 text-muted-foreground" />
           {volumeSupported ? (
             <>
-              <Slider
-                orientation="vertical"
-                value={volume ?? 0}
-                max={volumeMax}
-                onValueChange={changeVolume}
-                aria-label={t("displayVolume")}
-                className="h-28"
-              />
+              <div className={verticalSliderCellClass}>
+                <Slider
+                  orientation="vertical"
+                  value={volume ?? 0}
+                  max={volumeMax}
+                  onValueChange={changeVolume}
+                  aria-label={t("volume")}
+                  className="h-28"
+                />
+              </div>
               <span className="text-sm tabular-nums text-muted-foreground">
                 {volume ?? "—"}
               </span>
             </>
           ) : (
-            <div className="row-span-2 flex h-full items-center px-2 text-center text-xs text-muted-foreground">
+            <div className="row-span-2 flex h-full w-8 items-center justify-center px-2 text-center text-xs text-muted-foreground">
               {error ? t("volumeUnavailable") : t("volumeUnsupported")}
             </div>
           )}
           <span className="text-xs text-muted-foreground">
-            {t("displayVolume")}
+            {t("volume")}
           </span>
         </div>
       </div>
@@ -123,7 +128,7 @@ export function AdjustControls({
             value={volume ?? 0}
             max={volumeMax}
             onValueChange={changeVolume}
-            aria-label={t("displayVolume")}
+            aria-label={t("volume")}
             className={sliderClassName}
           />
           <span className="w-10 shrink-0 text-right text-sm tabular-nums text-muted-foreground">
