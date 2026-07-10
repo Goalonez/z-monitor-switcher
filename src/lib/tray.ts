@@ -8,7 +8,9 @@ import {
   PhysicalPosition,
   Window,
   currentMonitor,
+  cursorPosition,
   monitorFromPoint,
+  primaryMonitor,
 } from "@tauri-apps/api/window";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import type { TrayIconEvent } from "@tauri-apps/api/tray";
@@ -54,6 +56,11 @@ let trayControlsDestroyedUnlisten: (() => void) | null = null;
 let lastFocusDismissedAt = 0;
 let trayClickHideInProgress = false;
 
+type PanelAnchor =
+  | { type: "tray"; event: TrayIconEvent }
+  | { type: "point"; position: PhysicalPosition }
+  | { type: "primary-top-right" };
+
 function waitForTrayControlsInitialSize(timeoutMs = 700): Promise<void> {
   return new Promise((resolve) => {
     let settled = false;
@@ -85,9 +92,9 @@ export async function showMainWindow(): Promise<void> {
 }
 
 /**
- * Compute the panel's top-left position in PHYSICAL pixels, next to the tray
- * icon, clamped to the tray monitor's work area so it never overlaps the
- * Windows taskbar or lands off-screen on Retina / multi-display setups.
+ * Compute the panel's top-left position in PHYSICAL pixels from a tray rect,
+ * cursor point, or primary-monitor fallback. Clamp to the selected monitor's
+ * work area so it never overlaps a taskbar/panel or lands off-screen.
  *
  * The TrayIconEvent rect (`position` / `size`) is in physical pixels per the
  * Tauri JS API, and monitor bounds are physical pixels plus a `scaleFactor`.
@@ -95,29 +102,43 @@ export async function showMainWindow(): Promise<void> {
  * and push the window off-screen (the original bug).
  */
 async function computePanelPosition(
-  event: TrayIconEvent,
+  anchor: PanelAnchor,
   panelSize?: { width: number; height: number },
 ): Promise<PhysicalPosition | null> {
-  const iconCenterX = event.rect.position.x + event.rect.size.width / 2;
-  const iconCenterY = event.rect.position.y + event.rect.size.height / 2;
-  const monitor =
-    (await monitorFromPoint(iconCenterX, iconCenterY).catch(() => null)) ??
-    (await currentMonitor().catch(() => null));
+  const trayEvent = anchor.type === "tray" ? anchor.event : null;
+  const anchorPoint =
+    anchor.type === "tray"
+      ? new PhysicalPosition(
+          anchor.event.rect.position.x + anchor.event.rect.size.width / 2,
+          anchor.event.rect.position.y + anchor.event.rect.size.height / 2,
+        )
+      : anchor.type === "point"
+        ? anchor.position
+        : null;
+  const monitor = anchorPoint
+    ? ((await monitorFromPoint(anchorPoint.x, anchorPoint.y).catch(() => null)) ??
+      (await primaryMonitor().catch(() => null)) ??
+      (await currentMonitor().catch(() => null)))
+    : ((await primaryMonitor().catch(() => null)) ??
+      (await currentMonitor().catch(() => null)));
   if (!monitor) return null;
 
   const scale = monitor.scaleFactor;
   const panelW = panelSize?.width ?? PANEL_LOGICAL_WIDTH * scale;
   const panelH = panelSize?.height ?? PANEL_LOGICAL_HEIGHT * scale;
-  const desiredX = iconCenterX - panelW / 2;
   const bounds = monitor.workArea ?? {
     position: monitor.position,
     size: monitor.size,
   };
-  const opensUp =
-    iconCenterY > bounds.position.y + bounds.size.height / 2;
-  const desiredY = opensUp
-    ? event.rect.position.y - panelH - PANEL_GAP
-    : event.rect.position.y + event.rect.size.height + PANEL_GAP;
+  const desiredX =
+    anchor.type === "primary-top-right"
+      ? bounds.position.x + bounds.size.width - panelW - SCREEN_MARGIN
+      : (anchorPoint?.x ?? bounds.position.x + bounds.size.width) - panelW / 2;
+  const desiredY = trayEvent
+    ? anchorPoint!.y > bounds.position.y + bounds.size.height / 2
+      ? trayEvent.rect.position.y - panelH - PANEL_GAP
+      : trayEvent.rect.position.y + trayEvent.rect.size.height + PANEL_GAP
+    : bounds.position.y + SCREEN_MARGIN;
 
   const minX = bounds.position.x + SCREEN_MARGIN;
   const maxX = bounds.position.x + bounds.size.width - panelW - SCREEN_MARGIN;
@@ -135,10 +156,10 @@ async function computePanelPosition(
 
 async function positionTrayControls(
   controls: WebviewWindow,
-  event: TrayIconEvent,
+  anchor: PanelAnchor,
 ): Promise<void> {
   const size = await controls.outerSize().catch(() => null);
-  const position = await computePanelPosition(event, size ?? undefined);
+  const position = await computePanelPosition(anchor, size ?? undefined);
   if (position) {
     await controls.setPosition(position).catch(() => {});
   }
@@ -146,10 +167,10 @@ async function positionTrayControls(
 
 function scheduleTrayControlsReposition(
   controls: WebviewWindow,
-  event: TrayIconEvent,
+  anchor: PanelAnchor,
 ): void {
   const reposition = () => {
-    void positionTrayControls(controls, event).catch(() => {});
+    void positionTrayControls(controls, anchor).catch(() => {});
   };
   window.setTimeout(reposition, 80);
   window.setTimeout(reposition, 220);
@@ -197,19 +218,17 @@ async function ensureTrayControlsFocusDismissal(
 }
 
 /** Show the compact brightness / volume panel opened from the menu bar. */
-async function showTrayControls(event?: TrayIconEvent): Promise<void> {
+async function showTrayControls(
+  anchor: PanelAnchor = { type: "primary-top-right" },
+): Promise<void> {
   const existing = await WebviewWindow.getByLabel(TRAY_CONTROLS_WINDOW_LABEL);
 
   if (existing) {
     await ensureTrayControlsFocusDismissal(existing).catch(() => {});
-    if (event) {
-      await positionTrayControls(existing, event).catch(() => {});
-    }
+    await positionTrayControls(existing, anchor).catch(() => {});
     await existing.show();
     await existing.setFocus();
-    if (event) {
-      scheduleTrayControlsReposition(existing, event);
-    }
+    scheduleTrayControlsReposition(existing, anchor);
     return;
   }
 
@@ -230,9 +249,9 @@ async function showTrayControls(event?: TrayIconEvent): Promise<void> {
     visibleOnAllWorkspaces: true,
     visible: false,
     focus: false,
-    // Center when we have no event; otherwise we set the physical position
-    // explicitly after creation (logical x/y would mis-place on Retina).
-    center: !event,
+    // The window stays hidden until we can position it from a tray rect, cursor
+    // point, or primary-monitor fallback. Never let Linux default to center.
+    center: false,
   });
 
   await new Promise<void>((resolve, reject) => {
@@ -247,10 +266,8 @@ async function showTrayControls(event?: TrayIconEvent): Promise<void> {
   await initialSizeReady;
 
   // Position in physical pixels after creation so Retina scaling is honored.
-  if (event) {
-    await positionTrayControls(controls, event).catch(() => {});
-    scheduleTrayControlsReposition(controls, event);
-  }
+  await positionTrayControls(controls, anchor).catch(() => {});
+  scheduleTrayControlsReposition(controls, anchor);
   await controls.show().catch(() => {});
   await controls.setFocus().catch(() => {});
 }
@@ -264,7 +281,13 @@ async function createTrayMenu(os: string): Promise<Menu | undefined> {
         id: "controls",
         text: translate("controls"),
         action: () => {
-          void showTrayControls().catch(() => {});
+          void cursorPosition()
+            .then((position) =>
+              showTrayControls({ type: "point", position }),
+            )
+            .catch(() =>
+              showTrayControls({ type: "primary-top-right" }),
+            );
         },
       },
       {
@@ -308,7 +331,9 @@ async function toggleTrayControls(event?: TrayIconEvent): Promise<void> {
   }
 
   try {
-    await showTrayControls(event);
+    await showTrayControls(
+      event ? { type: "tray", event } : { type: "primary-top-right" },
+    );
   } finally {
     trayClickHideInProgress = false;
   }
