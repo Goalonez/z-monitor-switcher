@@ -6,7 +6,6 @@ import {
 } from "@/lib/events";
 import {
   loadKvmConfig,
-  loadLastInput,
   saveKvmConfig,
   saveLastInput,
   DEFAULT_KVM_CONFIG,
@@ -137,11 +136,6 @@ export function useKvm(): UseKvmResult {
 
   const performSwitch = useCallback(
     async (monitor: MonitorInfo, value: number) => {
-      const current = await loadLastInput(monitor).catch(() => null);
-      if (current === value) {
-        emitInputChanged({ monitorId: monitor.id, value });
-        return;
-      }
       await setInput(monitor.id, value);
       await saveLastInput(monitor, value).catch(() => {});
       emitInputChanged({ monitorId: monitor.id, value });
@@ -155,9 +149,6 @@ export function useKvm(): UseKvmResult {
       value: number,
       options?: { showWindow?: boolean },
     ): Promise<boolean> => {
-      const activeInput = await loadLastInput(monitor).catch(() => null);
-      if (activeInput === value) return true;
-
       return loadKvmConfig(monitor)
         .then((current) => {
           if (!mountedRef.current) return true;

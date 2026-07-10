@@ -50,6 +50,7 @@ export function InputSwitcher({
     config,
     activeValue,
     status,
+    switchingValue,
     error,
     configError,
     switchTo,
@@ -183,11 +184,10 @@ export function InputSwitcher({
               activeValue === source.value &&
                 "border-primary/50 bg-accent text-accent-foreground",
             )}
-            disabled={status === "switching"}
             aria-pressed={activeValue === source.value}
             onClick={() => switchTo(source.value)}
           >
-            {status === "switching" && activeValue === source.value && (
+            {status === "switching" && switchingValue === source.value && (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
             )}
             <span className="truncate">{source.label}</span>

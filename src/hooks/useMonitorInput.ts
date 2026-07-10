@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { InputSource, MonitorInfo } from "@/lib/types";
 import { setInput } from "@/lib/api";
 import {
@@ -28,6 +28,8 @@ interface UseMonitorInputResult {
   activeValue: number | null;
   /** Switch state for inline feedback. */
   status: SwitchStatus;
+  /** Value currently passing KVM interception or being written over DDC. */
+  switchingValue: number | null;
   /** Last switch error message, if any. */
   error: string | null;
   /** Last input-source config / shortcut registration error, if any. */
@@ -65,10 +67,28 @@ export function useMonitorInput(
   const [config, setConfig] = useState<MonitorInputConfig>(defaultConfig);
   const [activeValue, setActiveValue] = useState<number | null>(null);
   const [status, setStatus] = useState<SwitchStatus>("idle");
+  const [switchingValue, setSwitchingValue] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [configError, setConfigError] = useState<string | null>(null);
+  const activeValueRef = useRef<number | null>(null);
+  const inFlightValueRef = useRef<number | null>(null);
+  const pendingValueRef = useRef<number | null>(null);
+  const generationRef = useRef(0);
+
+  const updateActiveValue = useCallback((value: number | null) => {
+    activeValueRef.current = value;
+    setActiveValue(value);
+  }, []);
 
   useEffect(() => {
+    const generation = generationRef.current + 1;
+    generationRef.current = generation;
+    inFlightValueRef.current = null;
+    pendingValueRef.current = null;
+    setSwitchingValue(null);
+    setStatus("idle");
+    setError(null);
+
     let cancelled = false;
     Promise.all([
       loadConfig(monitor),
@@ -76,12 +96,17 @@ export function useMonitorInput(
     ]).then(([loaded, lastInput]) => {
       if (cancelled) return;
       setConfig(loaded);
-      setActiveValue(lastInput);
+      updateActiveValue(lastInput);
     });
     return () => {
       cancelled = true;
+      if (generationRef.current === generation) {
+        generationRef.current += 1;
+        inFlightValueRef.current = null;
+        pendingValueRef.current = null;
+      }
     };
-  }, [monitor]);
+  }, [monitor, updateActiveValue]);
 
   // Cross-window sync: mirror active-input and config changes made in the other
   // window for this same monitor. Listeners only setState/reload and never
@@ -98,7 +123,7 @@ export function useMonitorInput(
     track(
       onInputChanged((payload) => {
         if (!active || payload.monitorId !== monitor.id) return;
-        setActiveValue(payload.value);
+        updateActiveValue(payload.value);
       }),
     );
     track(
@@ -113,7 +138,7 @@ export function useMonitorInput(
       active = false;
       for (const fn of unlisteners) fn();
     };
-  }, [monitor]);
+  }, [monitor, updateActiveValue]);
 
   const persist = useCallback(
     (next: MonitorInputConfig) => {
@@ -136,55 +161,83 @@ export function useMonitorInput(
   );
 
   const performSwitch = useCallback(
-    (value: number) => {
-      // Optimistic: reflect the new input immediately, before the slow DDC write.
-      const previous = activeValue;
-      setActiveValue(value);
-      // Broadcast the optimistic active value so the other window's quick-switch
-      // highlight stays in sync (listener only setState, never re-emits).
-      emitInputChanged({ monitorId: monitor.id, value });
+    async function runSwitch(value: number, generation: number): Promise<void> {
+      if (generationRef.current !== generation) return;
+
+      inFlightValueRef.current = value;
+      setSwitchingValue(value);
       setStatus("switching");
       setError(null);
 
-      setInput(monitor.id, value)
-        .then(() => {
-          void saveLastInput(monitor, value).catch(() => {});
-          setStatus("idle");
-        })
-        .catch((err: unknown) => {
-          // Roll back: 0x60 reads are unreliable, so we trust our own last
-          // known-good value rather than re-reading the monitor.
-          setActiveValue(previous);
-          setError(err instanceof Error ? err.message : String(err));
-          setStatus("error");
-        });
+      let finalStatus: SwitchStatus = "idle";
+      let finalError: string | null = null;
+
+      try {
+        const handled = onSwitchRequested
+          ? await onSwitchRequested(value)
+          : false;
+        if (generationRef.current !== generation) return;
+
+        if (!handled) {
+          // Optimistic: reflect the new input immediately, before the slow DDC
+          // write. `activeValue` is only a last-commanded visual hint, so an
+          // idle request may intentionally send the same value again.
+          const previous = activeValueRef.current;
+          updateActiveValue(value);
+          emitInputChanged({ monitorId: monitor.id, value });
+
+          try {
+            await setInput(monitor.id, value);
+            if (generationRef.current !== generation) return;
+            void saveLastInput(monitor, value).catch(() => {});
+          } catch (err: unknown) {
+            if (generationRef.current !== generation) return;
+            // Roll back without reading VCP 0x60, whose value is unreliable.
+            updateActiveValue(previous);
+            if (previous !== null) {
+              emitInputChanged({ monitorId: monitor.id, value: previous });
+            }
+            finalError = err instanceof Error ? err.message : String(err);
+            finalStatus = "error";
+          }
+        }
+      } catch (err: unknown) {
+        if (generationRef.current !== generation) return;
+        finalError = err instanceof Error ? err.message : String(err);
+        finalStatus = "error";
+      } finally {
+        if (generationRef.current !== generation) return;
+
+        const pendingValue = pendingValueRef.current;
+        pendingValueRef.current = null;
+        inFlightValueRef.current = null;
+
+        if (pendingValue !== null) {
+          void runSwitch(pendingValue, generation);
+          return;
+        }
+
+        setSwitchingValue(null);
+        setError(finalError);
+        setStatus(finalStatus);
+      }
     },
-    [activeValue, monitor],
+    [monitor, onSwitchRequested, updateActiveValue],
   );
 
   const switchTo = useCallback(
     (value: number) => {
-      // Some monitors re-negotiate even when writing the already-active input.
-      // A no-op here avoids blanking clamshell Macs on same-source clicks.
-      if (activeValue === value) {
-        setStatus("idle");
-        setError(null);
+      const inFlightValue = inFlightValueRef.current;
+      if (inFlightValue !== null) {
+        // Busy requests are latest-wins. Re-selecting the in-flight value clears
+        // an older pending choice instead of scheduling a redundant write.
+        pendingValueRef.current = value === inFlightValue ? null : value;
         return;
       }
-      if (!onSwitchRequested) {
-        performSwitch(value);
-        return;
-      }
-      void onSwitchRequested(value)
-        .then((handled) => {
-          if (!handled) performSwitch(value);
-        })
-        .catch((err: unknown) => {
-          setError(err instanceof Error ? err.message : String(err));
-          setStatus("error");
-        });
+
+      void performSwitch(value, generationRef.current);
     },
-    [activeValue, onSwitchRequested, performSwitch],
+    [performSwitch],
   );
 
   const applyPreset = useCallback(
@@ -242,6 +295,7 @@ export function useMonitorInput(
     config,
     activeValue,
     status,
+    switchingValue,
     error,
     configError,
     switchTo,

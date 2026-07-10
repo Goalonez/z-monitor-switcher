@@ -20,10 +20,14 @@ export function InputQuickSwitch({
   monitor,
   onSwitchRequested,
 }: InputQuickSwitchProps) {
-  const { config, activeValue, status, error, switchTo } = useMonitorInput(
-    monitor,
-    { onSwitchRequested },
-  );
+  const {
+    config,
+    activeValue,
+    status,
+    switchingValue,
+    error,
+    switchTo,
+  } = useMonitorInput(monitor, { onSwitchRequested });
   const { t } = useI18n();
   const enabledSources = config.sources.filter((source) => source.enabled);
 
@@ -44,11 +48,10 @@ export function InputQuickSwitch({
               activeValue === source.value &&
                 "border-primary/50 bg-accent text-accent-foreground",
             )}
-            disabled={status === "switching"}
             aria-pressed={activeValue === source.value}
             onClick={() => switchTo(source.value)}
           >
-            {status === "switching" && activeValue === source.value && (
+            {status === "switching" && switchingValue === source.value && (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
             )}
             <span className="truncate">{source.label}</span>
