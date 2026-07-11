@@ -203,9 +203,29 @@ async function persistPortalRegistrations(
   hotkeys: HotkeyBinding[],
   registrations: PortalShortcutRegistration[],
 ): Promise<void> {
-  const triggerById = new Map(
-    registrations.map((item) => [item.id, item.triggerDescription.trim()]),
+  const triggerById = new Map<string, string>();
+  const emptyTriggers: string[] = [];
+  for (const item of registrations) {
+    const trigger = item.triggerDescription.trim();
+    if (!trigger) {
+      emptyTriggers.push(item.id);
+      continue;
+    }
+    triggerById.set(item.id, trigger);
+  }
+  if (emptyTriggers.length > 0) {
+    throw new Error("系统没有返回有效快捷键，请重新配置");
+  }
+  const missingRegistrations = hotkeys.filter(
+    (hotkey) => !triggerById.has(hotkey.portalId),
   );
+  if (missingRegistrations.length > 0) {
+    throw new Error(
+      `系统没有返回这些快捷键的绑定结果：${missingRegistrations
+        .map((hotkey) => `${hotkey.monitorName} / ${hotkey.sourceLabel}`)
+        .join("、")}`,
+    );
+  }
   const hotkeyByMonitor = new Map<string, HotkeyBinding[]>();
   for (const hotkey of hotkeys) {
     const key = monitorKey(hotkey.monitor);
@@ -220,8 +240,8 @@ async function persistPortalRegistrations(
       const sources = config.sources.map((source, sourceIndex) => {
         const hotkey = relevant.find((item) => item.sourceIndex === sourceIndex);
         if (!hotkey) return source;
-        const trigger = triggerById.get(hotkey.portalId) ?? "";
-        if (trigger === source.accelerator) return source;
+        const trigger = triggerById.get(hotkey.portalId);
+        if (!trigger || trigger === source.accelerator) return source;
         changed = true;
         return { ...source, accelerator: trigger };
       });

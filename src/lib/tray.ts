@@ -88,6 +88,19 @@ function waitForTrayControlsInitialSize(timeoutMs = 700): Promise<void> {
 export async function showMainWindow(): Promise<void> {
   const win = await Window.getByLabel("main");
   if (!win) return;
+  const os = await getOs().catch(() => "unknown");
+
+  if (os === "linux") {
+    await win.setAlwaysOnTop(false).catch(() => {});
+    await win.show();
+    await win.unminimize().catch(() => {});
+    await win.setFocus().catch(() => {});
+    window.setTimeout(() => {
+      void win.setFocus().catch(() => {});
+    }, 120);
+    return;
+  }
+
   await win.show();
   await win.unminimize();
   await win.setFocus();

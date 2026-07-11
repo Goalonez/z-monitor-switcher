@@ -143,6 +143,11 @@ export async function setDockVisible(visible: boolean): Promise<void> {
   return invoke<void>("set_dock_visible", { visible });
 }
 
+/** Linux: verify the plugin-created autostart entry launches silently. */
+export async function verifyLinuxAutostart(): Promise<void> {
+  return invoke<void>("verify_linux_autostart");
+}
+
 /** Select native plugin vs. Wayland XDG Portal shortcut handling. */
 export async function getShortcutBackend(): Promise<ShortcutBackendInfo> {
   return invoke<ShortcutBackendInfo>("get_shortcut_backend");

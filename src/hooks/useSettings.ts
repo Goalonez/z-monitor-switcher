@@ -54,7 +54,15 @@ export function useSettings(): UseSettingsResult {
     let cancelled = false;
     (async () => {
       try {
-        const autostartOn = await ensureAutostartDefault();
+        let autostartOn = false;
+        const autostartError = await ensureAutostartDefault()
+          .then((enabled) => {
+            autostartOn = enabled;
+            return null;
+          })
+          .catch((err: unknown) =>
+            err instanceof Error ? err.message : String(err),
+          );
         await setupTray();
         const hotkeyError = await applyConfiguredHotkeys().catch(
           (err: unknown) => (err instanceof Error ? err.message : String(err)),
@@ -85,7 +93,7 @@ export function useSettings(): UseSettingsResult {
         setOs(detectedOs);
         setShowTrayState(trayVisible);
         setShowDockState(dockVisible);
-        setError(hotkeyError);
+        setError(autostartError ?? hotkeyError);
         setStatus("ready");
       } catch (err: unknown) {
         if (cancelled) return;
@@ -105,8 +113,11 @@ export function useSettings(): UseSettingsResult {
       .then((actual) => setAutostartState(actual))
       .catch((err: unknown) => {
         setError(err instanceof Error ? err.message : String(err));
-        // Re-read the real state on failure.
-        void autostartEnabled().then(setAutostartState);
+        // Re-read the real usable state on failure; if verification itself
+        // fails, do not leave the optimistic enabled state visible.
+        void autostartEnabled()
+          .then(setAutostartState)
+          .catch(() => setAutostartState(false));
       });
   }, []);
 

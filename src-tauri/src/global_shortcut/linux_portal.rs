@@ -143,11 +143,11 @@ pub async fn configure(
     state: &PortalShortcutState,
     bindings: Vec<PortalShortcutBinding>,
 ) -> Result<Vec<PortalShortcutRegistration>, String> {
-    let mut registration = state.registration.lock().await;
-    if let Some(previous) = registration.take() {
-        close_registration(previous).await?;
-    }
     if bindings.is_empty() {
+        let mut registration = state.registration.lock().await;
+        if let Some(previous) = registration.take() {
+            close_registration(previous).await?;
+        }
         return Ok(Vec::new());
     }
 
@@ -187,7 +187,17 @@ pub async fn configure(
             trigger_description: shortcut.trigger_description().to_string(),
         })
         .collect();
-    let configured_ids: HashSet<_> = configured.iter().map(|item| item.id.as_str()).collect();
+    let mut configured_ids = HashSet::new();
+    for item in &configured {
+        if item.id.trim().is_empty() {
+            let _ = session.close().await;
+            return Err("系统返回了空的 Wayland 快捷键 ID".into());
+        }
+        if !configured_ids.insert(item.id.as_str()) {
+            let _ = session.close().await;
+            return Err(format!("系统返回了重复的 Wayland 快捷键 ID：{}", item.id));
+        }
+    }
     let missing: Vec<_> = bindings
         .iter()
         .filter(|binding| !configured_ids.contains(binding.id.as_str()))
@@ -198,6 +208,23 @@ pub async fn configure(
         return Err(format!(
             "系统没有返回这些快捷键的绑定结果：{}",
             missing.join("、")
+        ));
+    }
+    let empty_triggers: Vec<_> = configured
+        .iter()
+        .filter(|item| item.trigger_description.trim().is_empty())
+        .filter_map(|item| {
+            bindings
+                .iter()
+                .find(|binding| binding.id == item.id)
+                .map(|binding| binding.description.as_str())
+        })
+        .collect();
+    if !empty_triggers.is_empty() {
+        let _ = session.close().await;
+        return Err(format!(
+            "系统没有为这些快捷键返回有效按键：{}",
+            empty_triggers.join("、")
         ));
     }
 
@@ -224,9 +251,17 @@ pub async fn configure(
         }
     });
 
-    *registration = Some(PortalRegistration {
-        session,
-        activation_task,
-    });
+    let previous = {
+        let mut registration = state.registration.lock().await;
+        registration.replace(PortalRegistration {
+            session,
+            activation_task,
+        })
+    };
+    if let Some(previous) = previous {
+        // The new session is already valid; old-session cleanup must not make
+        // the frontend discard the newly returned trigger descriptions.
+        let _ = close_registration(previous).await;
+    }
     Ok(configured)
 }

@@ -13,7 +13,7 @@ import { useKvm } from "@/hooks/useKvm";
 import { useSettings } from "@/hooks/useSettings";
 import { useUpdater } from "@/hooks/useUpdater";
 import { useI18n } from "@/lib/i18n";
-import { openUrl, quitApp } from "@/lib/api";
+import { getOs, openUrl, quitApp } from "@/lib/api";
 import { Github, Power, Settings as SettingsIcon } from "lucide-react";
 import logoUrl from "@/assets/logo.png";
 import {
@@ -39,15 +39,18 @@ function MainWindow() {
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   // Raise the main window to the front on launch (it can open behind other
-  // apps). Pulse always-on-top briefly so it surfaces without staying pinned.
+  // apps). Skip the always-on-top pulse on Linux because some compositors keep
+  // native decorations temporarily unresponsive after hide/show cycles.
   useEffect(() => {
     const win = getCurrentWindow();
-    void win
-      .isVisible()
-      .then((visible) => {
+    void getOs()
+      .then((os) => win.isVisible().then((visible) => ({ os, visible })))
+      .then(({ os, visible }) => {
         if (!visible) return;
         void win.setFocus().catch(() => {});
-        void win.setAlwaysOnTop(true).catch(() => {});
+        if (os !== "linux") {
+          void win.setAlwaysOnTop(true).catch(() => {});
+        }
       })
       .catch(() => {});
     const timer = setTimeout(() => {

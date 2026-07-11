@@ -8,6 +8,7 @@ mod post_action;
 use monitor::{backend, MonitorCapabilities, MonitorControl, MonitorError, MonitorInfo};
 use native_control::NativeControlCapabilities;
 use post_action::PostAction;
+use tauri::Manager;
 
 const SILENT_START_ARG: &str = "--silent-start";
 const MAIN_WINDOW_LABEL: &str = "main";
@@ -173,6 +174,75 @@ fn open_url(app: tauri::AppHandle, url: String) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
+/// Linux: verify the XDG autostart desktop entry created by the plugin is
+/// present, enabled, and includes the silent-start argument configured at init.
+#[tauri::command]
+fn verify_linux_autostart(app: tauri::AppHandle) -> Result<(), String> {
+    #[cfg(target_os = "linux")]
+    {
+        verify_linux_autostart_entry(&app)
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = app;
+        Ok(())
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn verify_linux_autostart_entry(app: &tauri::AppHandle) -> Result<(), String> {
+    // tauri-plugin-autostart delegates Linux entries to auto-launch, which
+    // names ~/.config/autostart/{package_name}.desktop from package_info().name.
+    let app_name = app.package_info().name.as_str();
+    let desktop_path = linux_autostart_desktop_path(app_name)?;
+    let content = std::fs::read_to_string(&desktop_path).map_err(|e| {
+        format!(
+            "Linux autostart entry is missing or unreadable at {}: {}",
+            desktop_path.display(),
+            e
+        )
+    })?;
+
+    if content.lines().any(|line| line.trim() == "Hidden=true") {
+        return Err(format!(
+            "Linux autostart entry is disabled at {}",
+            desktop_path.display()
+        ));
+    }
+
+    let exec_line = content
+        .lines()
+        .find(|line| line.trim_start().starts_with("Exec="))
+        .ok_or_else(|| {
+            format!(
+                "Linux autostart entry at {} has no Exec line",
+                desktop_path.display()
+            )
+        })?;
+
+    if !exec_line.contains(SILENT_START_ARG) {
+        return Err(format!(
+            "Linux autostart entry at {} does not launch with {}",
+            desktop_path.display(),
+            SILENT_START_ARG
+        ));
+    }
+
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn linux_autostart_desktop_path(app_name: &str) -> Result<std::path::PathBuf, String> {
+    let home = std::env::var_os("HOME")
+        .map(std::path::PathBuf::from)
+        .ok_or_else(|| "cannot locate Linux autostart directory: HOME is not set".to_string())?;
+
+    Ok(home
+        .join(".config")
+        .join("autostart")
+        .join(format!("{}.desktop", app_name)))
+}
+
 /// Quit the whole app (used by the tray panel and the homepage Quit button).
 /// The window close button only hides to tray, so this is the explicit exit.
 #[tauri::command]
@@ -290,7 +360,6 @@ pub fn run() {
             // Windows falls back to the manual refresh button). Best-effort.
             display_watch::start(app.handle().clone());
 
-            use tauri::Manager;
             if let Some(window) = app.get_webview_window("main") {
                 if is_silent_start() {
                     let _ = window.hide();
@@ -330,6 +399,7 @@ pub fn run() {
             quit_app,
             get_os,
             set_dock_visible,
+            verify_linux_autostart,
             get_shortcut_backend,
             configure_portal_shortcuts,
             clear_portal_shortcuts
@@ -342,7 +412,6 @@ pub fn run() {
             // window so the Dock click behaves like a normal app launch.
             #[cfg(target_os = "macos")]
             if let tauri::RunEvent::Reopen { .. } = event {
-                use tauri::Manager;
                 if let Some(w) = app.get_webview_window("main") {
                     let _ = w.show();
                     let _ = w.unminimize();
