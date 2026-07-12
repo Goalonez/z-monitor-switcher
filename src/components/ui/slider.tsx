@@ -11,7 +11,7 @@ export interface SliderProps
   min?: number;
   /** Fires with the parsed numeric value on every move. */
   onValueChange: (value: number) => void;
-  /** Layout orientation. Vertical relies on `writing-mode: vertical-lr`. */
+  /** Layout orientation. Vertical is a rotated horizontal range for WebKitGTK/X11 compatibility. */
   orientation?: "horizontal" | "vertical";
 }
 
@@ -19,8 +19,9 @@ export interface SliderProps
  * Minimal slider built on a native `<input type="range">` to avoid pulling in a
  * Radix dependency (keeps the bundle small, matching the project's philosophy).
  * The owner debounces the DDC write; this component only reports value changes.
- * Vertical orientation uses the modern `writing-mode` approach so the track and
- * thumb render top-to-bottom with high values at the top.
+ * Vertical orientation intentionally rotates a horizontal range instead of using
+ * `writing-mode`: WebKitGTK on Ubuntu 22.04 X11 can map vertical range clicks to
+ * zero and stop dragging reliably.
  */
 const Slider = React.forwardRef<HTMLInputElement, SliderProps>(
   (
@@ -45,7 +46,7 @@ const Slider = React.forwardRef<HTMLInputElement, SliderProps>(
       className={cn(
         "slider-native cursor-pointer appearance-none rounded-full bg-transparent accent-primary",
         orientation === "vertical"
-          ? "slider-native-vertical h-full w-4 [writing-mode:vertical-lr] [direction:rtl]"
+          ? "slider-native-vertical h-4 w-28 -rotate-90"
           : "slider-native-horizontal h-4 w-full",
         className,
       )}

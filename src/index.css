@@ -84,20 +84,6 @@
     background: hsl(var(--primary));
   }
 
-  .slider-native-vertical::-webkit-slider-runnable-track {
-    width: var(--slider-track-size);
-    height: 100%;
-  }
-
-  .slider-native-vertical::-webkit-slider-thumb {
-    margin-top: 0;
-    margin-left: calc((var(--slider-track-size) - var(--slider-thumb-size)) / 2);
-  }
-
-  .slider-native-vertical::-moz-range-track {
-    width: var(--slider-track-size);
-    height: 100%;
-  }
 }
 
 @layer base {

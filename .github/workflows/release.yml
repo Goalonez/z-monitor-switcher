@@ -332,7 +332,7 @@ jobs:
 
   build-linux:
     name: Build Linux DEB
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     needs: validate
     steps:
       - name: Checkout
@@ -362,7 +362,7 @@ jobs:
             curl \
             file \
             libayatana-appindicator3-dev \
-            libfuse2t64 \
+            libfuse2 \
             libgtk-3-dev \
             libssl-dev \
             libudev-dev \

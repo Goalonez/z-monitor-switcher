@@ -8,8 +8,6 @@ import {
   displayAccelerator,
 } from "@/lib/accelerators";
 import {
-  applyConfiguredHotkeys,
-  clearHotkeys,
   configurePortalHotkey,
   getShortcutBackendInfo,
 } from "@/lib/hotkeys";
@@ -36,7 +34,6 @@ interface InputSwitcherProps {
 
 type RecordingSession = {
   index: number;
-  phase: "starting" | "recording";
   token: number;
 };
 
@@ -75,7 +72,6 @@ export function InputSwitcher({
     number | null
   >(null);
   const recordButtonRef = useRef<HTMLButtonElement>(null);
-  const hotkeySuspendPromiseRef = useRef<Promise<void>>(Promise.resolve());
   const recordingTokenRef = useRef(0);
   const enabledSources = config.sources.filter((source) => source.enabled);
   const visibleConfigError = configError ?? recordingHotkeyError;
@@ -101,32 +97,10 @@ export function InputSwitcher({
     };
   }, []);
 
-  const restoreConfiguredHotkeys = useCallback((token: number) => {
-    void hotkeySuspendPromiseRef.current
-      .then(() => {
-        if (recordingTokenRef.current !== token) return undefined;
-        return applyConfiguredHotkeys();
-      })
-      .then((hotkeyError) => {
-        if (recordingTokenRef.current === token && hotkeyError !== undefined) {
-          setRecordingHotkeyError(hotkeyError);
-        }
-      })
-      .catch((err: unknown) => {
-        if (recordingTokenRef.current === token) {
-          setRecordingHotkeyError(
-            err instanceof Error ? err.message : String(err),
-          );
-        }
-      });
-  }, []);
-
   const cancelRecording = useCallback(() => {
-    const token = recordingTokenRef.current + 1;
-    recordingTokenRef.current = token;
+    recordingTokenRef.current += 1;
     setRecording(null);
-    restoreConfiguredHotkeys(token);
-  }, [restoreConfiguredHotkeys]);
+  }, []);
 
   const finishRecording = useCallback(() => {
     recordingTokenRef.current += 1;
@@ -137,22 +111,7 @@ export function InputSwitcher({
     const token = recordingTokenRef.current + 1;
     recordingTokenRef.current = token;
     setRecordingHotkeyError(null);
-    setRecording({ index, phase: "starting", token });
-
-    const suspendPromise = clearHotkeys().catch((err: unknown) => {
-      if (recordingTokenRef.current === token) {
-        setRecordingHotkeyError(
-          err instanceof Error ? err.message : String(err),
-        );
-      }
-    });
-    hotkeySuspendPromiseRef.current = suspendPromise;
-
-    void suspendPromise.then(() => {
-      if (recordingTokenRef.current === token) {
-        setRecording({ index, phase: "recording", token });
-      }
-    });
+    setRecording({ index, token });
   }, []);
 
   const configureSystemShortcut = useCallback(
@@ -173,14 +132,14 @@ export function InputSwitcher({
   useEffect(() => {
     if (!recording) return;
 
-    const handleKeyDown = (event: KeyboardEvent) => {
+    const handleShortcutEvent = (event: KeyboardEvent) => {
+      if (recordingTokenRef.current !== recording.token) return;
       event.preventDefault();
       event.stopPropagation();
       if (event.key === "Escape") {
         cancelRecording();
         return;
       }
-      if (recording.phase !== "recording") return;
       if (event.repeat) return;
       if (event.key === "Backspace" || event.key === "Delete") {
         updateSource(recording.index, { accelerator: "" });
@@ -201,10 +160,20 @@ export function InputSwitcher({
       cancelRecording();
     };
 
-    window.addEventListener("keydown", handleKeyDown, true);
+    const timeout = window.setTimeout(cancelRecording, 15_000);
+    recordButtonRef.current?.focus();
+
+    // Keep recording lightweight on Ubuntu 22.04 X11. The previous flow
+    // unregistered/re-registered native global shortcuts around each recording
+    // session, which can make WebKitGTK appear stuck. Capture normal DOM
+    // keydown events instead; persisted config re-applies hotkeys after save.
+    window.addEventListener("keydown", handleShortcutEvent, true);
+    document.addEventListener("keydown", handleShortcutEvent, true);
     document.addEventListener("mousedown", handlePointerDown, true);
     return () => {
-      window.removeEventListener("keydown", handleKeyDown, true);
+      window.clearTimeout(timeout);
+      window.removeEventListener("keydown", handleShortcutEvent, true);
+      document.removeEventListener("keydown", handleShortcutEvent, true);
       document.removeEventListener("mousedown", handlePointerDown, true);
     };
   }, [cancelRecording, finishRecording, recording, updateSource]);
@@ -293,10 +262,6 @@ export function InputSwitcher({
               )}
               {config.sources.map((source, index) => {
                 const isActiveRecorder = recordingIndex === index;
-                const isStartingRecorder =
-                  isActiveRecorder && recording?.phase === "starting";
-                const isReadyRecorder =
-                  isActiveRecorder && recording?.phase === "recording";
                 const isPortalConfiguring = portalConfiguringIndex === index;
                 const shortcutLabel =
                   shortcutBackend === "portal"
@@ -344,7 +309,7 @@ export function InputSwitcher({
                     variant={isActiveRecorder ? "secondary" : "outline"}
                     size="sm"
                     className="min-w-0 px-2"
-                    disabled={isStartingRecorder || isPortalConfiguring}
+                    disabled={isPortalConfiguring}
                     onClick={() => {
                       if (shortcutBackend === "portal") {
                         configureSystemShortcut(index);
@@ -362,13 +327,13 @@ export function InputSwitcher({
                         : t("setShortcut")
                     }
                   >
-                    {isStartingRecorder || isPortalConfiguring ? (
+                    {isPortalConfiguring ? (
                       <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
                     ) : (
                       <Keyboard className="h-3.5 w-3.5 shrink-0" />
                     )}
                     <span className="min-w-0">
-                      {isReadyRecorder
+                      {isActiveRecorder
                         ? t("pressShortcut")
                         : shortcutLabel ||
                           (shortcutBackend === "portal"

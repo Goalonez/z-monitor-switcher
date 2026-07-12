@@ -63,7 +63,6 @@ export function AdjustControls({
               max={brightnessMax}
               onValueChange={changeBrightness}
               aria-label={t("brightness")}
-              className="h-28"
             />
           </div>
           <span className="text-sm tabular-nums text-muted-foreground">
@@ -83,7 +82,6 @@ export function AdjustControls({
                   max={volumeMax}
                   onValueChange={changeVolume}
                   aria-label={t("volume")}
-                  className="h-28"
                 />
               </div>
               <span className="text-sm tabular-nums text-muted-foreground">
