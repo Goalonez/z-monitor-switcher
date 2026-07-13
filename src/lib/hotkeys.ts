@@ -61,6 +61,11 @@ export async function getShortcutBackendInfo(): Promise<ShortcutBackendInfo> {
   return getShortcutBackend();
 }
 
+/** Temporarily clear native app shortcuts so the in-window recorder can receive keys. */
+export async function clearNativeHotkeysForRecording(): Promise<void> {
+  await unregisterAll();
+}
+
 /**
  * Global-hotkey registration. Each binding switches one configured monitor to
  * one configured input source. We always clear previous registrations first so

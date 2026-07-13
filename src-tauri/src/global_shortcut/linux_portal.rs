@@ -173,11 +173,17 @@ pub async fn configure(
         .iter()
         .map(|binding| NewShortcut::new(&binding.id, &binding.description))
         .collect();
-    let response = portal
+    let response = match portal
         .bind_shortcuts(&session, &requested, None)
         .await
         .and_then(|request| request.response())
-        .map_err(|error| map_portal_error("配置 Wayland 快捷键失败", error))?;
+    {
+        Ok(response) => response,
+        Err(error) => {
+            let _ = session.close().await;
+            return Err(map_portal_error("配置 Wayland 快捷键失败", error));
+        }
+    };
 
     let configured: Vec<_> = response
         .shortcuts()

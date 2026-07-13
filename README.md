@@ -62,7 +62,7 @@ sudo udevadm trigger
 
 完成后注销并重新登录。显示器 OSD 菜单中也需要开启 DDC/CI。
 
-**系统要求**：Ubuntu 22.04 X11 或兼容的 Linux 桌面环境。
+**系统要求**：Ubuntu 24.04 X11 或兼容的 Linux 桌面环境。
 
 ## 🚀 快速开始
 
@@ -112,7 +112,7 @@ sudo udevadm trigger
 - ⚠️ 多显示器时，重启后设备顺序可能变化
 
 **Linux / Ubuntu**
-- ⚠️ Linux 支持以 Ubuntu 22.04 X11 为主要目标，其他发行版/桌面会话可能需要自行确认依赖和权限
+- ⚠️ Linux 支持以 Ubuntu 24.04 X11 为主要目标，其他发行版/桌面会话可能需要自行确认依赖和权限
 - ⚠️ DDC 访问依赖内核 I2C 设备和用户权限，Wayland/X11 本身不能替代 `/dev/i2c-*` 权限
 - ⚠️ Wayland 全局快捷键由桌面系统授权和分配，部分桌面环境可能不提供 Global Shortcuts Portal
 - ⚠️ 热插拔暂不自动刷新，连接变化后请在应用中手动刷新显示器列表

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { MonitorInfo } from "@/lib/types";
-import type { ShortcutBackend } from "@/lib/types";
+import type { ShortcutBackendInfo } from "@/lib/types";
 import { useMonitorInput } from "@/hooks/useMonitorInput";
 import { DEFAULT_PRESET_ID } from "@/lib/presets";
 import {
@@ -8,6 +8,8 @@ import {
   displayAccelerator,
 } from "@/lib/accelerators";
 import {
+  applyConfiguredHotkeys,
+  clearNativeHotkeysForRecording,
   configurePortalHotkey,
   getShortcutBackendInfo,
 } from "@/lib/hotkeys";
@@ -35,6 +37,7 @@ interface InputSwitcherProps {
 type RecordingSession = {
   index: number;
   token: number;
+  restoreOnCancel: boolean;
 };
 
 /**
@@ -66,53 +69,134 @@ export function InputSwitcher({
   const [recordingHotkeyError, setRecordingHotkeyError] = useState<
     string | null
   >(null);
-  const [shortcutBackend, setShortcutBackend] =
-    useState<ShortcutBackend>("native");
+  const [shortcutBackendInfo, setShortcutBackendInfo] =
+    useState<ShortcutBackendInfo | null>(null);
   const [portalConfiguringIndex, setPortalConfiguringIndex] = useState<
     number | null
   >(null);
   const recordButtonRef = useRef<HTMLButtonElement>(null);
   const recordingTokenRef = useRef(0);
+  const recordingRef = useRef<RecordingSession | null>(null);
+  const mountedRef = useRef(true);
   const enabledSources = config.sources.filter((source) => source.enabled);
   const visibleConfigError = configError ?? recordingHotkeyError;
   const recordingIndex = recording?.index ?? null;
+  const shortcutBackend = shortcutBackendInfo?.backend ?? "unavailable";
 
   useEffect(() => {
     let active = true;
+    mountedRef.current = true;
     void getShortcutBackendInfo()
       .then((info) => {
         if (!active) return;
-        setShortcutBackend(info.backend);
+        setShortcutBackendInfo(info);
         if (info.error) setRecordingHotkeyError(info.error);
       })
       .catch((err: unknown) => {
         if (!active) return;
-        setShortcutBackend("unavailable");
-        setRecordingHotkeyError(
-          err instanceof Error ? err.message : String(err),
-        );
+        const message = err instanceof Error ? err.message : String(err);
+        setShortcutBackendInfo({
+          backend: "unavailable",
+          sessionType: null,
+          error: message,
+        });
+        setRecordingHotkeyError(message);
       });
     return () => {
       active = false;
+      mountedRef.current = false;
     };
   }, []);
 
+  useEffect(() => {
+    recordingRef.current = recording;
+  }, [recording]);
+
+  const restoreNativeHotkeysAfterCancel = useCallback(
+    (session: RecordingSession | null) => {
+      if (!session?.restoreOnCancel) return;
+      void applyConfiguredHotkeys()
+        .then((hotkeyError) => {
+          if (mountedRef.current) setRecordingHotkeyError(hotkeyError);
+        })
+        .catch((err: unknown) => {
+          if (!mountedRef.current) return;
+          setRecordingHotkeyError(
+            err instanceof Error ? err.message : String(err),
+          );
+        });
+    },
+    [],
+  );
+
   const cancelRecording = useCallback(() => {
+    const session = recordingRef.current;
     recordingTokenRef.current += 1;
     setRecording(null);
-  }, []);
+    restoreNativeHotkeysAfterCancel(session);
+  }, [restoreNativeHotkeysAfterCancel]);
 
   const finishRecording = useCallback(() => {
+    const session = recordingRef.current;
     recordingTokenRef.current += 1;
     setRecording(null);
+    if (!session?.restoreOnCancel) return;
+    window.setTimeout(() => {
+      void applyConfiguredHotkeys()
+        .then((hotkeyError) => {
+          if (mountedRef.current && hotkeyError) {
+            setRecordingHotkeyError(hotkeyError);
+          }
+        })
+        .catch((err: unknown) => {
+          if (!mountedRef.current) return;
+          setRecordingHotkeyError(
+            err instanceof Error ? err.message : String(err),
+          );
+        });
+    }, 500);
   }, []);
 
-  const startRecording = useCallback((index: number) => {
+  const startRecording = useCallback(async (index: number) => {
+    const previous = recordingRef.current;
+    if (previous) {
+      recordingTokenRef.current += 1;
+      setRecording(null);
+      restoreNativeHotkeysAfterCancel(previous);
+    }
+    if (!shortcutBackendInfo) {
+      setRecordingHotkeyError("正在检测当前会话的快捷键支持，请稍后重试");
+      return;
+    }
+    if (shortcutBackendInfo.backend !== "native") {
+      setRecordingHotkeyError(
+        shortcutBackendInfo.error ?? "当前会话不支持应用内快捷键录制",
+      );
+      return;
+    }
     const token = recordingTokenRef.current + 1;
     recordingTokenRef.current = token;
     setRecordingHotkeyError(null);
-    setRecording({ index, token });
-  }, []);
+    let restoreOnCancel = false;
+    if (shortcutBackendInfo.sessionType === "x11") {
+      try {
+        await clearNativeHotkeysForRecording();
+        restoreOnCancel = true;
+      } catch (err: unknown) {
+        setRecordingHotkeyError(
+          err instanceof Error ? err.message : String(err),
+        );
+        return;
+      }
+    }
+    if (recordingTokenRef.current !== token) {
+      if (restoreOnCancel) {
+        restoreNativeHotkeysAfterCancel({ index, token, restoreOnCancel });
+      }
+      return;
+    }
+    setRecording({ index, token, restoreOnCancel });
+  }, [restoreNativeHotkeysAfterCancel, shortcutBackendInfo]);
 
   const configureSystemShortcut = useCallback(
     (index: number) => {
@@ -163,10 +247,9 @@ export function InputSwitcher({
     const timeout = window.setTimeout(cancelRecording, 15_000);
     recordButtonRef.current?.focus();
 
-    // Keep recording lightweight on Ubuntu 22.04 X11. The previous flow
-    // unregistered/re-registered native global shortcuts around each recording
-    // session, which can make WebKitGTK appear stuck. Capture normal DOM
-    // keydown events instead; persisted config re-applies hotkeys after save.
+    // Capture normal DOM keydown events for native sessions. On Ubuntu 24.04
+    // X11, app hotkeys are temporarily cleared before this effect starts so a
+    // registered shortcut cannot swallow the combination being recorded.
     window.addEventListener("keydown", handleShortcutEvent, true);
     document.addEventListener("keydown", handleShortcutEvent, true);
     document.addEventListener("mousedown", handlePointerDown, true);
@@ -309,17 +392,31 @@ export function InputSwitcher({
                     variant={isActiveRecorder ? "secondary" : "outline"}
                     size="sm"
                     className="min-w-0 px-2"
-                    disabled={isPortalConfiguring}
+                    disabled={
+                      isPortalConfiguring ||
+                      !shortcutBackendInfo ||
+                      shortcutBackend === "unavailable"
+                    }
                     onClick={() => {
                       if (shortcutBackend === "portal") {
                         configureSystemShortcut(index);
+                        return;
+                      }
+                      if (
+                        !shortcutBackendInfo ||
+                        shortcutBackend === "unavailable"
+                      ) {
+                        setRecordingHotkeyError(
+                          shortcutBackendInfo?.error ??
+                            "当前会话不支持全局快捷键",
+                        );
                         return;
                       }
                       if (isActiveRecorder) {
                         cancelRecording();
                         return;
                       }
-                      startRecording(index);
+                      void startRecording(index);
                     }}
                     title={
                       shortcutBackend === "portal"

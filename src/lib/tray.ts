@@ -91,7 +91,7 @@ export async function showMainWindow(): Promise<void> {
   const os = await getOs().catch(() => "unknown");
 
   if (os === "linux") {
-    // Keep the Linux restore path deliberately simple. Ubuntu 22.04 X11 became
+    // Keep the Linux restore path deliberately simple. Ubuntu 24.04 X11 became
     // unstable when the hidden main window was repositioned during restore;
     // show/unminimize/focus preserves close-to-tray without triggering exits.
     await win.setAlwaysOnTop(false).catch(() => {});

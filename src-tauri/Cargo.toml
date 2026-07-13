@@ -1,6 +1,6 @@
 [package]
 name = "z-monitor-switcher"
-version = "0.1.12"
+version = "0.1.13"
 description = "Cross-platform monitor input source switcher"
 authors = ["Goalonez"]
 edition = "2021"

@@ -62,7 +62,7 @@ sudo udevadm trigger
 
 Log out and back in after changing group membership. DDC/CI must also be enabled in the monitor OSD menu.
 
-**Requirements**: Ubuntu 22.04 X11 or a compatible Linux desktop environment.
+**Requirements**: Ubuntu 24.04 X11 or a compatible Linux desktop environment.
 
 ## 🚀 Quick Start
 
@@ -112,7 +112,7 @@ Log out and back in after changing group membership. DDC/CI must also be enabled
 - ⚠️ With multiple monitors, device order may change after restart
 
 **Linux / Ubuntu**
-- ⚠️ Linux support is primarily targeted at Ubuntu 22.04 X11; other distributions/session types may require dependency and permission checks
+- ⚠️ Linux support is primarily targeted at Ubuntu 24.04 X11; other distributions/session types may require dependency and permission checks
 - ⚠️ DDC access depends on kernel I2C devices and user permissions; Wayland/X11 permissions do not replace `/dev/i2c-*` access
 - ⚠️ Wayland global hotkeys are authorized and assigned by the desktop; some desktop environments may not provide a Global Shortcuts Portal
 - ⚠️ Hot-plug auto-refresh is not implemented yet; use the manual refresh action after monitor changes

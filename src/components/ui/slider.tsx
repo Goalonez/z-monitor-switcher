@@ -20,7 +20,7 @@ export interface SliderProps
  * Radix dependency (keeps the bundle small, matching the project's philosophy).
  * The owner debounces the DDC write; this component only reports value changes.
  * Vertical orientation intentionally rotates a horizontal range instead of using
- * `writing-mode`: WebKitGTK on Ubuntu 22.04 X11 can map vertical range clicks to
+ * `writing-mode`: WebKitGTK on Ubuntu 24.04 X11 can map vertical range clicks to
  * zero and stop dragging reliably.
  */
 const Slider = React.forwardRef<HTMLInputElement, SliderProps>(
