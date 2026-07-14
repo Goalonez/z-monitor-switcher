@@ -75,7 +75,7 @@ function formatRegistrationFailure(
   err: unknown,
 ): string {
   const detail = errorMessage(err).trim() || "未知错误";
-  return `${displayAccelerator(binding.accelerator)}（${binding.monitorName} / ${binding.sourceLabel}，${binding.accelerator}）：${detail}`;
+  return `${displayAccelerator(binding.accelerator)}（${binding.monitorName} / ${binding.sourceLabel}）可能已被系统或其他应用占用，请换一个组合键。详细信息：${detail}`;
 }
 
 /**
@@ -126,7 +126,7 @@ export async function applyHotkeys(bindings: HotkeyBinding[]): Promise<void> {
   }
 
   if (failures.length > 0) {
-    throw new Error(`这些快捷键未生效：${failures.join("、")}`);
+    throw new Error(failures.join("；"));
   }
 }
 
