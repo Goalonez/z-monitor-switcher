@@ -66,6 +66,18 @@ export async function clearNativeHotkeysForRecording(): Promise<void> {
   await unregisterAll();
 }
 
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+function formatRegistrationFailure(
+  binding: HotkeyBinding,
+  err: unknown,
+): string {
+  const detail = errorMessage(err).trim() || "未知错误";
+  return `${displayAccelerator(binding.accelerator)}（${binding.monitorName} / ${binding.sourceLabel}，${binding.accelerator}）：${detail}`;
+}
+
 /**
  * Global-hotkey registration. Each binding switches one configured monitor to
  * one configured input source. We always clear previous registrations first so
@@ -108,10 +120,8 @@ export async function applyHotkeys(bindings: HotkeyBinding[]): Promise<void> {
   for (const binding of unique) {
     try {
       await register(binding.accelerator, handler);
-    } catch {
-      failures.push(
-        `${displayAccelerator(binding.accelerator)}（${binding.monitorName} / ${binding.sourceLabel}）`,
-      );
+    } catch (err: unknown) {
+      failures.push(formatRegistrationFailure(binding, err));
     }
   }
 
